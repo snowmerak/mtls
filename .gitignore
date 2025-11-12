@@ -1,1 +1,39 @@
+# Binaries
+mtls
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output of the go coverage tool
+*.out
+
+# Certificates and keys (should not be committed)
+certs/
+*.pem
+*.key
+*.crt
+*.csr
+
+# Dependency directories
+vendor/
+
+# Go workspace file
+go.work
+
+# IDE specific files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# serena
 .serena
