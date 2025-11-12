@@ -309,6 +309,96 @@ func TestMixedKeyTypes(t *testing.T) {
 	})
 }
 
+func TestIPOnlyServerCertificate(t *testing.T) {
+	// Generate CA
+	ca, err := GenerateRootCA("Test Root CA", 10)
+	if err != nil {
+		t.Fatalf("Failed to generate root CA: %v", err)
+	}
+
+	t.Run("Server certificate with only IP addresses", func(t *testing.T) {
+		opts := DefaultServerCertOptions("10.0.0.1")
+		opts.DNSNames = nil // No DNS names
+		opts.IPAddresses = []net.IP{
+			net.ParseIP("10.0.0.1"),
+			net.ParseIP("192.168.1.100"),
+			net.ParseIP("::1"),
+		}
+
+		serverCert, err := ca.GenerateServerCertificateWithOptions(opts)
+		if err != nil {
+			t.Fatalf("Failed to generate IP-only server certificate: %v", err)
+		}
+
+		if serverCert == nil {
+			t.Fatal("Server certificate is nil")
+		}
+
+		// Verify no DNS names
+		if len(serverCert.Certificate.DNSNames) != 0 {
+			t.Errorf("Expected no DNS names, got %d", len(serverCert.Certificate.DNSNames))
+		}
+
+		// Verify IP addresses
+		if len(serverCert.Certificate.IPAddresses) != 3 {
+			t.Fatalf("Expected 3 IP addresses, got %d", len(serverCert.Certificate.IPAddresses))
+		}
+
+		// Verify specific IPs
+		expectedIPs := []string{"10.0.0.1", "192.168.1.100", "::1"}
+		for i, ip := range serverCert.Certificate.IPAddresses {
+			if ip.String() != expectedIPs[i] {
+				t.Errorf("Expected IP %s, got %s", expectedIPs[i], ip.String())
+			}
+		}
+
+		// Verify certificate chain
+		if err := serverCert.Certificate.CheckSignatureFrom(ca.Certificate); err != nil {
+			t.Errorf("Certificate signature verification failed: %v", err)
+		}
+	})
+
+	t.Run("Verify certificate with IP address", func(t *testing.T) {
+		opts := DefaultServerCertOptions("192.168.1.50")
+		opts.DNSNames = nil
+		opts.IPAddresses = []net.IP{net.ParseIP("192.168.1.50")}
+
+		serverCert, err := ca.GenerateServerCertificateWithOptions(opts)
+		if err != nil {
+			t.Fatalf("Failed to generate server certificate: %v", err)
+		}
+
+		// Create a certificate pool with the CA
+		roots := x509.NewCertPool()
+		roots.AddCert(ca.Certificate)
+
+		// Verify the server certificate against the CA with IP verification
+		verifyOpts := x509.VerifyOptions{
+			Roots:     roots,
+			KeyUsages: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		}
+
+		// Note: x509.VerifyOptions doesn't have a direct IP verification field,
+		// but the certificate will be valid for the IP in IPAddresses
+		if _, err := serverCert.Certificate.Verify(verifyOpts); err != nil {
+			t.Errorf("Server certificate verification failed: %v", err)
+		}
+
+		// Verify the IP is in the certificate
+		found := false
+		targetIP := net.ParseIP("192.168.1.50")
+		for _, ip := range serverCert.Certificate.IPAddresses {
+			if ip.Equal(targetIP) {
+				found = true
+				break
+			}
+		}
+		if !found {
+			t.Error("Target IP not found in certificate")
+		}
+	})
+}
+
 func TestGenerateRootCA(t *testing.T) {
 	t.Run("Generate valid root CA", func(t *testing.T) {
 		ca, err := GenerateRootCA("Test Root CA", 10)
