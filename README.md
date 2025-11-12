@@ -1,0 +1,329 @@
+# mTLS Certificate Management Tool
+
+A powerful, user-friendly CLI tool for creating and managing mTLS (mutual TLS) certificates, including self-signed Root CAs and server certificates.
+
+## Features
+
+- 🔐 **Create Self-Signed Root CA** - Generate your own Certificate Authority
+- 📜 **Generate Server Certificates** - Create server certificates signed by your CA
+- 🔑 **Multiple Key Types** - Support for RSA (2048/4096) and ECDSA (P-256/P-384/P-521)
+- 🎨 **Interactive CLI** - User-friendly prompts with sensible defaults
+- 📊 **Certificate Registry** - Track all your certificates in one place
+- 🎯 **Flexible Subject Configuration** - Customize all certificate fields
+- 🌐 **SAN Support** - Add DNS names and IP addresses to certificates
+
+## Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/snowmerak/mtls.git
+cd mtls
+
+# Build the binary
+go build
+
+# Optional: Install globally
+go install
+```
+
+## Quick Start
+
+### 1. Create a Root CA (Interactive Mode)
+
+```bash
+./mtls ca create
+```
+
+You'll be prompted for:
+- Common Name (e.g., "My Company Root CA")
+- Organization
+- Country Code
+- Validity Period (years)
+- Key Type (RSA 2048/4096, ECDSA P-256/P-384/P-521)
+- Output directory
+
+### 2. Create a Server Certificate (Interactive Mode)
+
+```bash
+./mtls cert create
+```
+
+You'll be prompted for:
+- Select existing CA or browse for one
+- Common Name (e.g., "api.example.com")
+- DNS names (comma-separated)
+- IP addresses (comma-separated)
+- Organization
+- Validity Period (years)
+- Key Type
+- Output directory
+
+### 3. List Your Certificates
+
+```bash
+# List all Root CAs
+./mtls ca list
+
+# List all server certificates
+./mtls cert list
+```
+
+## Batch Mode (Non-Interactive)
+
+### Create Root CA
+
+```bash
+./mtls ca create --batch \
+  --cn "My Company Root CA" \
+  --org "My Organization" \
+  --country "US" \
+  --years 10 \
+  --key-type rsa4096 \
+  --output ./certs/ca
+```
+
+### Create Server Certificate
+
+```bash
+./mtls cert create --batch \
+  --ca ./certs/ca \
+  --cn "api.example.com" \
+  --org "My API Server" \
+  --dns "api.example.com,*.api.example.com,localhost" \
+  --ip "127.0.0.1,192.168.1.100" \
+  --years 5 \
+  --key-type rsa2048 \
+  --output ./certs/servers/api.example.com
+```
+
+## Key Types
+
+| Key Type | Security | Speed | Use Case |
+|----------|----------|-------|----------|
+| `rsa2048` | Good | Fast | General server certificates |
+| `rsa4096` | Better | Slower | Root CAs, high-security environments |
+| `ecp256` | Good | Very Fast | Modern systems, IoT |
+| `ecp384` | Better | Fast | High-security modern systems |
+| `ecp521` | Best | Medium | Maximum security requirements |
+
+## Directory Structure
+
+After generating certificates, you'll have:
+
+```
+certs/
+├── .registry.json                    # Certificate registry
+├── ca/
+│   ├── ca-cert.pem                  # CA certificate
+│   ├── ca-key.pem                   # CA private key (0600)
+│   └── .metadata.json               # CA metadata
+└── servers/
+    └── api.example.com/
+        ├── server-cert.pem          # Server certificate
+        ├── server-key.pem           # Server private key (0600)
+        ├── ca-cert.pem              # CA certificate (copy)
+        └── .metadata.json           # Certificate metadata
+```
+
+## Usage in Go Code
+
+### Server Side (mTLS Server)
+
+```go
+package main
+
+import (
+    "crypto/tls"
+    "crypto/x509"
+    "log"
+    "net/http"
+    "os"
+)
+
+func main() {
+    // Load server certificate
+    cert, err := tls.LoadX509KeyPair(
+        "certs/servers/api.example.com/server-cert.pem",
+        "certs/servers/api.example.com/server-key.pem",
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Load CA certificate for client verification
+    caCert, err := os.ReadFile("certs/ca/ca-cert.pem")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    caCertPool := x509.NewCertPool()
+    caCertPool.AppendCertsFromPEM(caCert)
+
+    // Configure TLS
+    tlsConfig := &tls.Config{
+        Certificates: []tls.Certificate{cert},
+        ClientCAs:    caCertPool,
+        ClientAuth:   tls.RequireAndVerifyClientCert,
+    }
+
+    server := &http.Server{
+        Addr:      ":8443",
+        TLSConfig: tlsConfig,
+    }
+
+    log.Println("Server starting on https://localhost:8443")
+    log.Fatal(server.ListenAndServeTLS("", ""))
+}
+```
+
+### Client Side (mTLS Client)
+
+```go
+package main
+
+import (
+    "crypto/tls"
+    "crypto/x509"
+    "io"
+    "log"
+    "net/http"
+    "os"
+)
+
+func main() {
+    // Load client certificate
+    cert, err := tls.LoadX509KeyPair(
+        "certs/servers/client.example.com/server-cert.pem",
+        "certs/servers/client.example.com/server-key.pem",
+    )
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    // Load CA certificate
+    caCert, err := os.ReadFile("certs/ca/ca-cert.pem")
+    if err != nil {
+        log.Fatal(err)
+    }
+
+    caCertPool := x509.NewCertPool()
+    caCertPool.AppendCertsFromPEM(caCert)
+
+    // Configure TLS client
+    tlsConfig := &tls.Config{
+        Certificates: []tls.Certificate{cert},
+        RootCAs:      caCertPool,
+    }
+
+    client := &http.Client{
+        Transport: &http.Transport{
+            TLSClientConfig: tlsConfig,
+        },
+    }
+
+    resp, err := client.Get("https://api.example.com:8443")
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer resp.Body.Close()
+
+    body, _ := io.ReadAll(resp.Body)
+    log.Println(string(body))
+}
+```
+
+## IP-Only Certificates
+
+You can create certificates with only IP addresses (no DNS names):
+
+```bash
+./mtls cert create --batch \
+  --ca ./certs/ca \
+  --cn "192.168.1.100" \
+  --ip "192.168.1.100,10.0.0.5" \
+  --key-type ecp256
+```
+
+This is useful for:
+- Internal network services
+- Kubernetes pods with IP-based communication
+- IoT devices with static IPs
+
+## Commands Reference
+
+```bash
+# Root CA Management
+mtls ca create              # Create new Root CA (interactive)
+mtls ca create --batch      # Create new Root CA (non-interactive)
+mtls ca list                # List all Root CAs
+
+# Server Certificate Management
+mtls cert create            # Create server certificate (interactive)
+mtls cert create --batch    # Create server certificate (non-interactive)
+mtls cert list              # List all server certificates
+
+# Utility
+mtls version                # Show version
+mtls help                   # Show help
+mtls [command] --help       # Show command-specific help
+```
+
+## Advanced Options
+
+### Custom Subject Fields
+
+When using batch mode, you can customize more fields:
+
+```bash
+./mtls ca create --batch \
+  --cn "My Root CA" \
+  --org "My Organization" \
+  --country "US" \
+  --key-type rsa4096
+```
+
+### Mixed Key Types
+
+You can use different key types for CA and server certificates:
+
+```bash
+# ECDSA CA (fast)
+./mtls ca create --batch --cn "Fast CA" --key-type ecp256
+
+# RSA server certificate signed by ECDSA CA
+./mtls cert create --batch --ca ./certs/ca --cn "server.com" --key-type rsa2048
+```
+
+## Security Best Practices
+
+1. **Private Key Protection**: Private keys are automatically set to 0600 permissions
+2. **Key Types**: Use RSA 4096 or ECDSA P-384+ for CAs
+3. **Validity Periods**: 
+   - CAs: 10-20 years
+   - Server certificates: 1-5 years
+4. **Certificate Rotation**: Regularly rotate server certificates
+5. **Storage**: Keep CA private keys in secure, encrypted storage
+
+## Development
+
+### Run Tests
+
+```bash
+go test -v
+go test -cover
+go test -bench=.
+```
+
+### Build
+
+```bash
+go build
+```
+
+## License
+
+This project is open source. See LICENSE file for details.
+
+## Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
