@@ -26,6 +26,20 @@ go build
 go install
 ```
 
+## 예제
+
+실용적인 사용 예제는 [examples](./examples) 디렉토리를 참조하세요:
+
+- **[Caddy 서버](./examples/caddy)** - Caddy 웹 서버 mTLS 설정
+- **[Go 서버](./examples/go-server)** - mTLS 인증이 있는 HTTP 서버
+- **[Go 클라이언트](./examples/go-client)** - mTLS 서버에 연결하는 HTTP 클라이언트
+
+빠른 테스트:
+```bash
+cd examples
+./test.sh
+```
+
 ## 빠른 시작
 
 ### 1. Root CA 생성 (대화형 모드)

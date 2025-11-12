@@ -26,6 +26,20 @@ go build
 go install
 ```
 
+## Examples
+
+See the [examples](./examples) directory for practical usage:
+
+- **[Caddy Server](./examples/caddy)** - mTLS configuration for Caddy web server
+- **[Go Server](./examples/go-server)** - HTTP server with mTLS authentication
+- **[Go Client](./examples/go-client)** - HTTP client connecting to mTLS servers
+
+Quick test:
+```bash
+cd examples
+./test.sh
+```
+
 ## Quick Start
 
 ### 1. Create a Root CA (Interactive Mode)
