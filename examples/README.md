@@ -4,9 +4,30 @@ This directory contains practical examples of using mTLS certificates generated 
 
 ## Overview
 
-- **caddy/** - Caddy web server with mTLS configuration
-- **go-server/** - Go HTTP server with mTLS authentication
-- **go-client/** - Go HTTP client that connects to mTLS servers
+### Available Examples
+
+#### 1. Go
+- **[go-server](./go-server/)** - Go HTTP server with mTLS
+- **[go-client](./go-client/)** - Go HTTP client with mTLS testing
+
+#### 2. Node.js
+- **[node-server](./node-server/)** - Node.js HTTPS server with mTLS
+- **[node-client](./node-client/)** - Node.js HTTPS client with mTLS testing
+
+#### 3. Python
+- **[python-server](./python-server/)** - Python HTTPS server using built-in modules
+- **[python-client](./python-client/)** - Python HTTPS client using urllib
+
+#### 4. PHP
+- **[php-server](./php-server/)** - PHP server with mTLS (Apache/Nginx recommended for production)
+- **[php-client](./php-client/)** - PHP client using stream contexts
+
+#### 5. Rust
+- **[rust-server](./rust-server/)** - High-performance Rust server with Axum and Rustls
+- **[rust-client](./rust-client/)** - Rust client with Reqwest and Rustls
+
+#### 6. Caddy
+- **[caddy](./caddy/)** - Caddy web server with mTLS configuration
 
 ## Quick Start
 
@@ -43,33 +64,93 @@ cd examples/go-server
 go run main.go
 ```
 
-#### Option B: Caddy Server (Production-Ready)
+#### Option B: Node.js Server
+
+```bash
+cd examples/node-server
+npm install  # First time only
+npm start
+```
+
+#### Option C: Python Server
+
+```bash
+cd examples/python-server
+python3 server.py
+```
+
+#### Option D: PHP Server
+
+```bash
+cd examples/php-server
+./run.sh
+```
+
+#### Option E: Rust Server
+
+```bash
+cd examples/rust-server
+cargo run --release
+```
+
+#### Option F: Caddy Server (Production-Ready)
 
 ```bash
 cd examples/caddy
 ./run.sh
 ```
 
-### 3. Test with the Client
+### 3. Test with Clients
 
-In a new terminal:
+Choose a client in any language:
 
 ```bash
+# Go client
 cd examples/go-client
 go run main.go
+
+# Node.js client
+cd examples/node-client
+npm install  # First time only
+npm start
+
+# Python client
+cd examples/python-client
+python3 client.py
+
+# PHP client
+cd examples/php-client
+./run.sh
+
+# Rust client
+cd examples/rust-client
+cargo run --release
 ```
 
-## Examples Comparison
+## Language Comparison
 
-| Feature | Go Server | Caddy Server |
-|---------|-----------|--------------|
-| Setup Complexity | Simple | Simple |
-| Configuration | Code-based | Declarative |
-| Performance | Good | Excellent |
-| Production Ready | ✅ | ✅✅ |
-| Customization | Full control | Config-based |
-| Hot Reload | No | Yes |
-| Best For | Learning, Custom Logic | Production, Standard Servers |
+| Language | Server Framework | TLS Library | Async | Dependencies | Performance | Best For |
+|----------|-----------------|-------------|-------|--------------|-------------|----------|
+| **Go** | net/http | crypto/tls | ✅ Goroutines | Zero (stdlib) | ⭐⭐⭐⭐⭐ | Microservices, CLI tools |
+| **Node.js** | https | OpenSSL | ✅ Event loop | Zero (built-in) | ⭐⭐⭐⭐ | Web APIs, real-time |
+| **Python** | http.server | ssl | ❌ Sync | Zero (stdlib) | ⭐⭐⭐ | Scripts, prototyping |
+| **PHP** | Built-in/Apache | OpenSSL | ❌ Sync | Zero (ext-openssl) | ⭐⭐ | Legacy systems |
+| **Rust** | Axum | Rustls | ✅ Tokio | 9 crates | ⭐⭐⭐⭐⭐ | High-performance, safety |
+| **Caddy** | Caddy | Go crypto/tls | ✅ Built-in | Config only | ⭐⭐⭐⭐⭐ | Reverse proxy, edge |
+
+### Key Considerations
+
+**Choose Go** if you need microservices with excellent concurrency and zero dependencies.
+
+**Choose Node.js** if you're building web APIs and your team knows JavaScript/TypeScript.
+
+**Choose Python** if you're prototyping, writing scripts, or need data science integration.
+
+**Choose PHP** if you have legacy PHP applications or use Apache/Nginx with PHP-FPM.
+
+**Choose Rust** if you need maximum performance, memory safety, and systems-level programming.
+
+**Choose Caddy** if you need a reverse proxy, automatic HTTPS, or configuration simplicity
 
 ## Architecture
 

@@ -1,0 +1,12 @@
+{
+  "name": "mtls-node-client",
+  "version": "1.0.0",
+  "description": "mTLS example client in Node.js",
+  "main": "client.js",
+  "scripts": {
+    "start": "node client.js"
+  },
+  "keywords": ["mtls", "tls", "https", "security"],
+  "author": "",
+  "license": "MIT"
+}

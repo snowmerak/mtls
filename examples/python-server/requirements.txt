@@ -1,0 +1,5 @@
+# No external dependencies required for basic functionality
+# Python's built-in ssl and http.server modules are used
+
+# Optional: For development
+# watchdog==3.0.0  # For auto-reload during development

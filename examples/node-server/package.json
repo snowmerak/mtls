@@ -1,0 +1,16 @@
+{
+  "name": "mtls-node-server",
+  "version": "1.0.0",
+  "description": "mTLS example server in Node.js",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "keywords": ["mtls", "tls", "https", "security"],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "nodemon": "^3.0.0"
+  }
+}

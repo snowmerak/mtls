@@ -28,11 +28,14 @@ go install
 
 ## Examples
 
-See the [examples](./examples) directory for practical usage:
+See the [examples](./examples) directory for practical implementations in multiple languages:
 
-- **[Caddy Server](./examples/caddy)** - mTLS configuration for Caddy web server
-- **[Go Server](./examples/go-server)** - HTTP server with mTLS authentication
-- **[Go Client](./examples/go-client)** - HTTP client connecting to mTLS servers
+- **Go**: [Server](./examples/go-server/) | [Client](./examples/go-client/) - Standard library, zero dependencies
+- **Node.js**: [Server](./examples/node-server/) | [Client](./examples/node-client/) - Built-in HTTPS module
+- **Python**: [Server](./examples/python-server/) | [Client](./examples/python-client/) - Standard library ssl module
+- **PHP**: [Server](./examples/php-server/) | [Client](./examples/php-client/) - Stream contexts with OpenSSL
+- **Rust**: [Server](./examples/rust-server/) | [Client](./examples/rust-client/) - Axum + Rustls for performance
+- **Caddy**: [Config](./examples/caddy/) - Production-ready reverse proxy with mTLS
 
 Quick test:
 ```bash

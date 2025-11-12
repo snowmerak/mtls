@@ -28,11 +28,14 @@ go install
 
 ## 예제
 
-실용적인 사용 예제는 [examples](./examples) 디렉토리를 참조하세요:
+다양한 언어로 구현된 실제 예제는 [examples](./examples) 디렉토리를 참조하세요:
 
-- **[Caddy 서버](./examples/caddy)** - Caddy 웹 서버 mTLS 설정
-- **[Go 서버](./examples/go-server)** - mTLS 인증이 있는 HTTP 서버
-- **[Go 클라이언트](./examples/go-client)** - mTLS 서버에 연결하는 HTTP 클라이언트
+- **Go**: [서버](./examples/go-server/) | [클라이언트](./examples/go-client/) - 표준 라이브러리, 의존성 없음
+- **Node.js**: [서버](./examples/node-server/) | [클라이언트](./examples/node-client/) - 내장 HTTPS 모듈 사용
+- **Python**: [서버](./examples/python-server/) | [클라이언트](./examples/python-client/) - 표준 라이브러리 ssl 모듈
+- **PHP**: [서버](./examples/php-server/) | [클라이언트](./examples/php-client/) - OpenSSL을 사용하는 스트림 컨텍스트
+- **Rust**: [서버](./examples/rust-server/) | [클라이언트](./examples/rust-client/) - 고성능 Axum + Rustls
+- **Caddy**: [설정](./examples/caddy/) - mTLS를 지원하는 프로덕션 리버스 프록시
 
 빠른 테스트:
 ```bash

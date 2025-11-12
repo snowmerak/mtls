@@ -1,0 +1,5 @@
+# No external dependencies required
+# Python's built-in ssl and urllib modules are used
+
+# Optional: For enhanced HTTP features
+# requests==2.31.0  # Alternative to urllib with better API
