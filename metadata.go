@@ -22,6 +22,7 @@ type CertMetadata struct {
 	FingerprintSHA256 string    `json:"fingerprint_sha256"`
 	CertPath          string    `json:"cert_path"`
 	KeyPath           string    `json:"key_path"`
+	Issuer            string    `json:"issuer,omitempty"` // Common Name of the issuer
 	DNSNames          []string  `json:"dns_names,omitempty"`
 	IPAddresses       []string  `json:"ip_addresses,omitempty"`
 	CAPath            string    `json:"ca_path,omitempty"` // For server certs

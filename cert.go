@@ -227,6 +227,96 @@ func GenerateRootCAWithOptions(opts *CAOptions) (*CertificateAuthority, error) {
 	}, nil
 }
 
+// GenerateIntermediateCA creates an intermediate CA certificate signed by the parent CA
+func (ca *CertificateAuthority) GenerateIntermediateCA(commonName string, validYears int) (*CertificateAuthority, error) {
+	opts := DefaultCAOptions(commonName)
+	opts.ValidYears = validYears
+	// Intermediate CA usually has pathlen constraint less than parent
+	if ca.Certificate.BasicConstraintsValid && ca.Certificate.MaxPathLen > 0 {
+		opts.MaxPathLen = ca.Certificate.MaxPathLen - 1
+	} else {
+		opts.MaxPathLen = 0
+	}
+	return ca.GenerateIntermediateCAWithOptions(opts)
+}
+
+// GenerateIntermediateCAWithOptions creates an intermediate CA certificate signed by the parent CA with custom options
+func (ca *CertificateAuthority) GenerateIntermediateCAWithOptions(opts *CAOptions) (*CertificateAuthority, error) {
+	if opts == nil {
+		return nil, fmt.Errorf("options cannot be nil")
+	}
+
+	// Generate private key for intermediate CA
+	privateKey, err := generatePrivateKey(opts.KeyType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate intermediate CA private key: %w", err)
+	}
+
+	// Get public key
+	publicKey, err := getPublicKey(privateKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get public key: %w", err)
+	}
+
+	// Generate serial number
+	serialNumber := opts.SerialNumber
+	if serialNumber == nil {
+		var err error
+		serialNumber, err = rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+		if err != nil {
+			return nil, fmt.Errorf("failed to generate serial number: %w", err)
+		}
+	}
+
+	// Set key usage
+	keyUsage := x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign
+	if opts.KeyUsage != nil {
+		keyUsage = *opts.KeyUsage
+	}
+
+	// Set extended key usage
+	extKeyUsage := opts.ExtKeyUsage
+	if extKeyUsage == nil {
+		extKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth}
+	}
+
+	// Create certificate template
+	template := &x509.Certificate{
+		SerialNumber:          serialNumber,
+		Subject:               opts.Subject,
+		NotBefore:             time.Now(),
+		NotAfter:              time.Now().AddDate(opts.ValidYears, 0, 0),
+		KeyUsage:              keyUsage,
+		ExtKeyUsage:           extKeyUsage,
+		BasicConstraintsValid: true,
+		IsCA:                  true,
+		MaxPathLen:            opts.MaxPathLen,
+	}
+
+	// Get CA private key as crypto.Signer
+	caSigner, ok := ca.PrivateKey.(crypto.Signer)
+	if !ok {
+		return nil, fmt.Errorf("CA private key does not implement crypto.Signer")
+	}
+
+	// Create certificate signed by CA
+	certDER, err := x509.CreateCertificate(rand.Reader, template, ca.Certificate, publicKey, caSigner)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create intermediate CA certificate: %w", err)
+	}
+
+	// Parse certificate
+	cert, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse intermediate CA certificate: %w", err)
+	}
+
+	return &CertificateAuthority{
+		Certificate: cert,
+		PrivateKey:  privateKey,
+	}, nil
+}
+
 // GenerateServerCertificate creates a server certificate signed by the CA
 func (ca *CertificateAuthority) GenerateServerCertificate(commonName string, dnsNames []string, ipAddresses []net.IP, validYears int) (*ServerCertificate, error) {
 	opts := DefaultServerCertOptions(commonName)

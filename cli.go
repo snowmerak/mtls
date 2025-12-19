@@ -28,21 +28,23 @@ var (
 	warnColor    = color.New(color.FgYellow)
 )
 
-// createCACmd creates a new Root CA
+// createCACmd creates a new Root CA or Intermediate CA
 func createCACmd() *cobra.Command {
 	var batch bool
+	var caType string // "root" or "intermediate"
+	var parentCA string
 	var commonName, organization, country, outputDir string
 	var validYears int
 	var keyType string
 
 	cmd := &cobra.Command{
 		Use:   "create",
-		Short: "Create a new Root CA certificate",
-		Long:  "Interactively create a new self-signed Root CA certificate",
+		Short: "Create a new Root CA or Intermediate CA certificate",
+		Long:  "Interactively create a new self-signed Root CA or Intermediate CA certificate",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Interactive mode if not batch
 			if !batch {
-				if err := promptCAInfo(&commonName, &organization, &country, &validYears, &keyType, &outputDir); err != nil {
+				if err := promptCAInfo(&caType, &parentCA, &commonName, &organization, &country, &validYears, &keyType, &outputDir); err != nil {
 					return err
 				}
 			}
@@ -50,6 +52,9 @@ func createCACmd() *cobra.Command {
 			// Validate inputs
 			if commonName == "" {
 				return fmt.Errorf("common name is required")
+			}
+			if caType == "intermediate" && parentCA == "" {
+				return fmt.Errorf("parent CA is required for intermediate CA")
 			}
 
 			// Create CA options
@@ -61,22 +66,63 @@ func createCACmd() *cobra.Command {
 
 			// Show spinner
 			s := spinner.New(spinner.CharSets[11], 100*time.Millisecond)
-			s.Suffix = " Generating Root CA..."
+			s.Suffix = " Generating CA..."
 			s.Start()
 
-			// Generate CA
-			ca, err := GenerateRootCAWithOptions(opts)
+			var ca *CertificateAuthority
+			var err error
+			var parentCertPath string
+
+			if caType == "intermediate" {
+				// Load parent CA
+				registry, err := LoadRegistry(defaultRegistryPath)
+				if err != nil {
+					s.Stop()
+					return fmt.Errorf("failed to load registry: %w", err)
+				}
+
+				var parentMeta *CertMetadata
+				for _, c := range registry.CAs {
+					if c.CommonName == parentCA {
+						parentMeta = &c
+						break
+					}
+				}
+				if parentMeta == nil {
+					s.Stop()
+					return fmt.Errorf("parent CA '%s' not found", parentCA)
+				}
+				parentCertPath = parentMeta.CertPath
+
+				parent, err := LoadCAFromFiles(parentMeta.CertPath, parentMeta.KeyPath)
+				if err != nil {
+					s.Stop()
+					return fmt.Errorf("failed to load parent CA: %w", err)
+				}
+
+				ca, err = parent.GenerateIntermediateCAWithOptions(opts)
+			} else {
+				ca, err = GenerateRootCAWithOptions(opts)
+			}
+
 			s.Stop()
 			if err != nil {
 				errorColor.Printf("✗ Failed to generate CA: %v\n", err)
 				return err
 			}
-			successColor.Println("✓ Root CA generated")
+			successColor.Println("✓ CA generated")
 
 			// Save files
-			certPath := filepath.Join(outputDir, "ca-cert.pem")
-			keyPath := filepath.Join(outputDir, "ca-key.pem")
-			metadataPath := filepath.Join(outputDir, ".metadata.json")
+			// Use a subdirectory for the CA to keep things organized
+			// If outputDir is default, append common name
+			saveDir := outputDir
+			if outputDir == defaultCADir {
+				saveDir = filepath.Join(outputDir, strings.ReplaceAll(commonName, " ", "_"))
+			}
+
+			certPath := filepath.Join(saveDir, "ca-cert.pem")
+			keyPath := filepath.Join(saveDir, "ca-key.pem")
+			metadataPath := filepath.Join(saveDir, ".metadata.json")
 
 			s.Suffix = " Saving certificate files..."
 			s.Start()
@@ -97,17 +143,23 @@ func createCACmd() *cobra.Command {
 
 			// Save metadata
 			metadata := CertMetadata{
-				Type:              "ca",
+				Type:              "root-ca",
 				CommonName:        commonName,
 				Organization:      organization,
 				Country:           country,
 				KeyType:           keyType,
 				CreatedAt:         time.Now(),
 				ExpiresAt:         time.Now().AddDate(validYears, 0, 0),
-				SerialNumber:      "1",
+				SerialNumber:      ca.Certificate.SerialNumber.String(),
 				FingerprintSHA256: fingerprint,
 				CertPath:          certPath,
 				KeyPath:           keyPath,
+				CAPath:            parentCertPath,
+			}
+
+			if caType == "intermediate" {
+				metadata.Type = "intermediate-ca"
+				metadata.Issuer = parentCA
 			}
 
 			if err := SaveMetadata(&metadata, metadataPath); err != nil {
@@ -127,10 +179,13 @@ func createCACmd() *cobra.Command {
 
 			// Print success message
 			fmt.Println()
-			successColor.Println("✓ Root CA created successfully!")
+			successColor.Printf("✓ %s created successfully!\n", caType)
 			infoColor.Printf("  Certificate: %s\n", certPath)
 			infoColor.Printf("  Private Key: %s (permissions: 0600)\n", keyPath)
 			infoColor.Printf("  Fingerprint: SHA256:%s\n", fingerprint[:16]+"...")
+			if caType == "intermediate" {
+				infoColor.Printf("  Issuer: %s\n", parentCA)
+			}
 			fmt.Println()
 
 			return nil
@@ -138,6 +193,8 @@ func createCACmd() *cobra.Command {
 	}
 
 	cmd.Flags().BoolVar(&batch, "batch", false, "Non-interactive mode")
+	cmd.Flags().StringVar(&caType, "type", "root", "CA Type (root, intermediate)")
+	cmd.Flags().StringVar(&parentCA, "parent", "", "Parent CA Common Name (required for intermediate)")
 	cmd.Flags().StringVar(&commonName, "cn", "", "Common Name")
 	cmd.Flags().StringVar(&organization, "org", "Self-Signed CA", "Organization")
 	cmd.Flags().StringVar(&country, "country", "KR", "Country Code")
@@ -148,13 +205,53 @@ func createCACmd() *cobra.Command {
 	return cmd
 }
 
-func promptCAInfo(cn, org, country *string, years *int, keyType, outputDir *string) error {
+func promptCAInfo(caType, parentCA, cn, org, country *string, years *int, keyType, outputDir *string) error {
+	// 1. Ask for CA Type
+	typePrompt := &survey.Select{
+		Message: "CA Type:",
+		Options: []string{"Root CA", "Intermediate CA"},
+		Default: "Root CA",
+	}
+	var typeAns string
+	if err := survey.AskOne(typePrompt, &typeAns); err != nil {
+		return err
+	}
+	if typeAns == "Root CA" {
+		*caType = "root"
+	} else {
+		*caType = "intermediate"
+	}
+
+	// 2. If Intermediate, ask for Parent CA
+	if *caType == "intermediate" {
+		registry, err := LoadRegistry(defaultRegistryPath)
+		if err != nil {
+			return fmt.Errorf("failed to load registry: %w", err)
+		}
+		if len(registry.CAs) == 0 {
+			return fmt.Errorf("no CAs found in registry. Please create a Root CA first")
+		}
+
+		var caOptions []string
+		for _, ca := range registry.CAs {
+			caOptions = append(caOptions, ca.CommonName)
+		}
+
+		parentPrompt := &survey.Select{
+			Message: "Parent CA:",
+			Options: caOptions,
+		}
+		if err := survey.AskOne(parentPrompt, parentCA); err != nil {
+			return err
+		}
+	}
+
 	questions := []*survey.Question{
 		{
 			Name: "commonName",
 			Prompt: &survey.Input{
 				Message: "CA Common Name:",
-				Default: "My Company Root CA",
+				Default: "My Company CA",
 			},
 			Validate: survey.Required,
 		},
@@ -246,6 +343,10 @@ func listCACmd() *cobra.Command {
 
 			for i, ca := range registry.CAs {
 				fmt.Printf("%d. %s\n", i+1, ca.CommonName)
+				infoColor.Printf("   Type: %s\n", ca.Type)
+				if ca.Issuer != "" {
+					infoColor.Printf("   Issuer: %s\n", ca.Issuer)
+				}
 				infoColor.Printf("   Organization: %s\n", ca.Organization)
 				infoColor.Printf("   Key Type: %s\n", ca.KeyType)
 				infoColor.Printf("   Created: %s\n", ca.CreatedAt.Format("2006-01-02 15:04:05"))
