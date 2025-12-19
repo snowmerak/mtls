@@ -5,7 +5,8 @@ mTLS (상호 TLS) 인증서를 생성하고 관리하기 위한 강력하고 사
 ## 주요 기능
 
 - 🔐 **자체 서명 Root CA 생성** - 자신만의 인증 기관 생성
-- 📜 **서버 인증서 생성** - CA로 서명된 서버 인증서 생성
+- � **중간 인증 기관(Intermediate CA) 생성** - 다계층 신뢰 체인을 위한 중간 CA 생성
+- �📜 **서버 인증서 생성** - CA로 서명된 서버 인증서 생성
 - 🔑 **다양한 키 타입 지원** - RSA (2048/4096)와 ECDSA (P-256/P-384/P-521) 지원
 - 🎨 **대화형 CLI** - 합리적인 기본값을 가진 사용자 친화적 프롬프트
 - 📊 **인증서 레지스트리** - 모든 인증서를 한 곳에서 추적
@@ -52,6 +53,7 @@ cd examples
 ```
 
 다음 항목들을 입력하게 됩니다:
+- CA 타입 (Root CA 또는 Intermediate CA)
 - Common Name (예: "우리 회사 Root CA")
 - 조직명
 - 국가 코드
@@ -59,7 +61,15 @@ cd examples
 - 키 타입 (RSA 2048/4096, ECDSA P-256/P-384/P-521)
 - 출력 디렉토리
 
-### 2. 서버 인증서 생성 (대화형 모드)
+### 2. 중간 인증 기관(Intermediate CA) 생성 (대화형 모드)
+
+```bash
+./mtls ca create
+```
+
+CA 타입에서 "Intermediate CA"를 선택하세요. 그 후 레지스트리에 등록된 부모 CA를 선택하라는 메시지가 표시됩니다.
+
+### 3. 서버 인증서 생성 (대화형 모드)
 
 ```bash
 ./mtls cert create
@@ -69,16 +79,7 @@ cd examples
 - 기존 CA 선택 또는 찾아보기
 - Common Name (예: "api.example.com")
 - DNS 이름들 (쉼표로 구분)
-- IP 주소들 (쉼표로 구분)
-- 조직명
-- 유효 기간 (년)
-- 키 타입
-- 출력 디렉토리
-
-### 3. 인증서 목록 조회
-
-```bash
-# 모든 Root CA 목록
+- IP CA 목록 (Root 및 Intermediate)
 ./mtls ca list
 
 # 모든 서버 인증서 목록
@@ -88,6 +89,30 @@ cd examples
 ## 배치 모드 (비대화형)
 
 ### Root CA 생성
+
+```bash
+./mtls ca create --batch \
+  --type root \
+  --cn "우리 회사 Root CA" \
+  --org "우리 조직" \
+  --country "KR" \
+  --years 10 \
+  --key-type rsa4096 \
+  --output ./certs/ca
+```
+
+### 중간 인증 기관(Intermediate CA) 생성
+
+```bash
+./mtls ca create --batch \
+  --type intermediate \
+  --parent "우리 회사 Root CA" \
+  --cn "우리 회사 Intermediate CA" \
+  --org "우리 조직" \
+  --country "KR" \
+  --years 5 \
+  --key-type rsa4096 \
+  --output ./certs/intermediate
 
 ```bash
 ./mtls ca create --batch \

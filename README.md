@@ -5,7 +5,8 @@ A powerful, user-friendly CLI tool for creating and managing mTLS (mutual TLS) c
 ## Features
 
 - 🔐 **Create Self-Signed Root CA** - Generate your own Certificate Authority
-- 📜 **Generate Server Certificates** - Create server certificates signed by your CA
+- � **Create Intermediate CA** - Generate Intermediate CAs for multi-level trust chains
+- �📜 **Generate Server Certificates** - Create server certificates signed by your CA
 - 🔑 **Multiple Key Types** - Support for RSA (2048/4096) and ECDSA (P-256/P-384/P-521)
 - 🎨 **Interactive CLI** - User-friendly prompts with sensible defaults
 - 📊 **Certificate Registry** - Track all your certificates in one place
@@ -52,6 +53,7 @@ cd examples
 ```
 
 You'll be prompted for:
+- CA Type (Root CA or Intermediate CA)
 - Common Name (e.g., "My Company Root CA")
 - Organization
 - Country Code
@@ -59,7 +61,15 @@ You'll be prompted for:
 - Key Type (RSA 2048/4096, ECDSA P-256/P-384/P-521)
 - Output directory
 
-### 2. Create a Server Certificate (Interactive Mode)
+### 2. Create an Intermediate CA (Interactive Mode)
+
+```bash
+./mtls ca create
+```
+
+Select "Intermediate CA" when prompted for CA Type. You'll then be asked to select a parent CA from your registry.
+
+### 3. Create a Server Certificate (Interactive Mode)
 
 ```bash
 ./mtls cert create
@@ -69,16 +79,7 @@ You'll be prompted for:
 - Select existing CA or browse for one
 - Common Name (e.g., "api.example.com")
 - DNS names (comma-separated)
-- IP addresses (comma-separated)
-- Organization
-- Validity Period (years)
-- Key Type
-- Output directory
-
-### 3. List Your Certificates
-
-```bash
-# List all Root CAs
+- IP addresCAs (Root and Intermediate)
 ./mtls ca list
 
 # List all server certificates
@@ -88,6 +89,30 @@ You'll be prompted for:
 ## Batch Mode (Non-Interactive)
 
 ### Create Root CA
+
+```bash
+./mtls ca create --batch \
+  --type root \
+  --cn "My Company Root CA" \
+  --org "My Organization" \
+  --country "US" \
+  --years 10 \
+  --key-type rsa4096 \
+  --output ./certs/ca
+```
+
+### Create Intermediate CA
+
+```bash
+./mtls ca create --batch \
+  --type intermediate \
+  --parent "My Company Root CA" \
+  --cn "My Company Intermediate CA" \
+  --org "My Organization" \
+  --country "US" \
+  --years 5 \
+  --key-type rsa4096 \
+  --output ./certs/intermediate
 
 ```bash
 ./mtls ca create --batch \
