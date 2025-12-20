@@ -11,7 +11,7 @@ import (
 
 // CertMetadata contains metadata about a certificate
 type CertMetadata struct {
-	Type              string    `json:"type"` // "ca" or "server"
+	Type              string    `json:"type"` // "ca", "server", or "client"
 	CommonName        string    `json:"common_name"`
 	Organization      string    `json:"organization"`
 	Country           string    `json:"country"`
@@ -34,6 +34,7 @@ type CertMetadata struct {
 type Registry struct {
 	CAs     []CertMetadata `json:"cas"`
 	Servers []CertMetadata `json:"servers"`
+	Clients []CertMetadata `json:"clients"`
 }
 
 // SaveMetadata saves metadata to a JSON file
@@ -110,6 +111,11 @@ func (r *Registry) AddCA(metadata CertMetadata) {
 // AddServer adds a server certificate to the registry
 func (r *Registry) AddServer(metadata CertMetadata) {
 	r.Servers = append(r.Servers, metadata)
+}
+
+// AddClient adds a client certificate to the registry
+func (r *Registry) AddClient(metadata CertMetadata) {
+	r.Clients = append(r.Clients, metadata)
 }
 
 // CalculateFingerprint calculates SHA256 fingerprint of a certificate file

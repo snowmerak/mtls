@@ -5,8 +5,12 @@ mTLS (상호 TLS) 인증서를 생성하고 관리하기 위한 강력하고 사
 ## 주요 기능
 
 - 🔐 **자체 서명 Root CA 생성** - 자신만의 인증 기관 생성
-- � **중간 인증 기관(Intermediate CA) 생성** - 다계층 신뢰 체인을 위한 중간 CA 생성
-- �📜 **서버 인증서 생성** - CA로 서명된 서버 인증서 생성
+- ⛓️ **중간 인증 기관(Intermediate CA) 생성** - 다계층 신뢰 체인을 위한 중간 CA 생성
+- 📜 **서버 인증서 생성** - CA로 서명된 서버 인증서 생성
+- 👤 **클라이언트 인증서 생성** - mTLS 인증을 위한 클라이언트 인증서 생성
+- ✍️ **CSR 서명** - 외부 소스의 인증서 서명 요청(CSR) 서명
+- 🚫 **인증서 폐기** - 인증서 폐기 및 CRL 생성
+- 🔍 **검사 및 검증** - 인증서 세부 정보 검사 및 체인 검증
 - 🔑 **다양한 키 타입 지원** - RSA (2048/4096)와 ECDSA (P-256/P-384/P-521) 지원
 - 🎨 **대화형 CLI** - 합리적인 기본값을 가진 사용자 친화적 프롬프트
 - 📊 **인증서 레지스트리** - 모든 인증서를 한 곳에서 추적
@@ -79,11 +83,50 @@ CA 타입에서 "Intermediate CA"를 선택하세요. 그 후 레지스트리에
 - 기존 CA 선택 또는 찾아보기
 - Common Name (예: "api.example.com")
 - DNS 이름들 (쉼표로 구분)
-- IP CA 목록 (Root 및 Intermediate)
+- IP 주소들 (쉼표로 구분)
+- 조직명
+- 유효 기간
+- 키 타입
+
+### 4. 클라이언트 인증서 생성 (대화형 모드)
+
+```bash
+./mtls cert create-client
+```
+
+다음 항목들을 입력하게 됩니다:
+- 기존 CA 선택
+- Common Name (예: "client-1")
+- 조직명
+- 유효 기간
+- 키 타입
+
+### 5. 기타 작업
+
+```bash
+# 모든 CA 목록 (Root 및 Intermediate)
 ./mtls ca list
 
 # 모든 서버 인증서 목록
 ./mtls cert list
+
+# 모든 클라이언트 인증서 목록
+./mtls cert list-client
+
+# CSR 서명
+./mtls ca sign
+
+# 인증서 폐기
+./mtls ca revoke
+
+# CRL 생성
+./mtls ca crl
+
+# 인증서 검사
+./mtls cert inspect --cert ./path/to/cert.pem
+
+# 인증서 체인 검증
+./mtls cert verify --cert ./path/to/cert.pem --root ./path/to/root.pem --intermediate ./path/to/inter.pem
 ```
 
 ## 배치 모드 (비대화형)

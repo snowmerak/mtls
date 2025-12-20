@@ -31,6 +31,13 @@ type ServerCertificate struct {
 	Chain       []*x509.Certificate
 }
 
+// ClientCertificate represents a client certificate with its private key
+type ClientCertificate struct {
+	Certificate *x509.Certificate
+	PrivateKey  crypto.PrivateKey // Can be *rsa.PrivateKey or *ecdsa.PrivateKey
+	Chain       []*x509.Certificate
+}
+
 // KeyType represents the type of cryptographic key to use
 type KeyType string
 
@@ -90,6 +97,24 @@ type ServerCertOptions struct {
 	ExtKeyUsage []x509.ExtKeyUsage
 }
 
+// ClientCertOptions contains options for generating a client certificate
+type ClientCertOptions struct {
+	// Subject information
+	Subject pkix.Name
+
+	// Validity period in years
+	ValidYears int
+
+	// Key type and size
+	KeyType KeyType
+
+	// Key usage (if nil, will use default client key usages)
+	KeyUsage *x509.KeyUsage
+
+	// Extended key usage (if nil, will use default)
+	ExtKeyUsage []x509.ExtKeyUsage
+}
+
 // DefaultCAOptions returns default options for CA generation
 func DefaultCAOptions(commonName string) *CAOptions {
 	keyUsage := x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign
@@ -122,6 +147,23 @@ func DefaultServerCertOptions(commonName string) *ServerCertOptions {
 		KeyType:     KeyTypeRSA2048,
 		KeyUsage:    &keyUsage,
 		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+	}
+}
+
+// DefaultClientCertOptions returns default options for client certificate generation
+func DefaultClientCertOptions(commonName string) *ClientCertOptions {
+	keyUsage := x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature
+	return &ClientCertOptions{
+		Subject: pkix.Name{
+			Country:            []string{"KR"},
+			Organization:       []string{"Client Certificate"},
+			OrganizationalUnit: []string{"IT Department"},
+			CommonName:         commonName,
+		},
+		ValidYears:  5,
+		KeyType:     KeyTypeRSA2048,
+		KeyUsage:    &keyUsage,
+		ExtKeyUsage: []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth},
 	}
 }
 
@@ -402,6 +444,82 @@ func (ca *CertificateAuthority) GenerateServerCertificateWithOptions(opts *Serve
 	}, nil
 }
 
+// GenerateClientCertificate creates a client certificate signed by the CA
+func (ca *CertificateAuthority) GenerateClientCertificate(commonName string, validYears int) (*ClientCertificate, error) {
+	opts := DefaultClientCertOptions(commonName)
+	opts.ValidYears = validYears
+	return ca.GenerateClientCertificateWithOptions(opts)
+}
+
+// GenerateClientCertificateWithOptions creates a client certificate signed by the CA with custom options
+func (ca *CertificateAuthority) GenerateClientCertificateWithOptions(opts *ClientCertOptions) (*ClientCertificate, error) {
+	if opts == nil {
+		return nil, fmt.Errorf("options cannot be nil")
+	}
+
+	// Generate private key for client
+	privateKey, err := generatePrivateKey(opts.KeyType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate client private key: %w", err)
+	}
+
+	// Get public key
+	publicKey, err := getPublicKey(privateKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get public key: %w", err)
+	}
+
+	// Generate serial number
+	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate serial number: %w", err)
+	}
+
+	// Set key usage
+	keyUsage := x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature
+	if opts.KeyUsage != nil {
+		keyUsage = *opts.KeyUsage
+	}
+
+	// Set extended key usage
+	extKeyUsage := opts.ExtKeyUsage
+	if extKeyUsage == nil {
+		extKeyUsage = []x509.ExtKeyUsage{x509.ExtKeyUsageClientAuth}
+	}
+
+	// Create certificate template
+	template := &x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject:      opts.Subject,
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().AddDate(opts.ValidYears, 0, 0),
+		KeyUsage:     keyUsage,
+		ExtKeyUsage:  extKeyUsage,
+	}
+
+	// Get CA private key as crypto.Signer
+	caSigner, ok := ca.PrivateKey.(crypto.Signer)
+	if !ok {
+		return nil, fmt.Errorf("CA private key does not implement crypto.Signer")
+	}
+
+	// Create certificate signed by CA
+	certDER, err := x509.CreateCertificate(rand.Reader, template, ca.Certificate, publicKey, caSigner)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create client certificate: %w", err)
+	}
+
+	// Parse certificate
+	cert, err := x509.ParseCertificate(certDER)
+	chain := append([]*x509.Certificate{cert}, ca.Chain...)
+
+	return &ClientCertificate{
+		Certificate: cert,
+		PrivateKey:  privateKey,
+		Chain:       chain,
+	}, nil
+}
+
 // SignCSR signs a Certificate Signing Request and returns a certificate
 func (ca *CertificateAuthority) SignCSR(csr *x509.CertificateRequest, validYears int) (*x509.Certificate, error) {
 	// Validate CSR signature
@@ -552,6 +670,76 @@ func (ca *CertificateAuthority) SaveCAToFiles(certPath, keyPath string) error {
 				return fmt.Errorf("failed to write chain certificate: %w", err)
 			}
 		}
+	}
+
+	return nil
+}
+
+// SaveClientCertToFiles saves the client certificate and private key to files
+func (cc *ClientCertificate) SaveClientCertToFiles(certPath, keyPath string) error {
+	// Create directory if it doesn't exist
+	if err := os.MkdirAll(filepath.Dir(certPath), 0755); err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(keyPath), 0755); err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	// Save certificate
+	certOut, err := os.Create(certPath)
+	if err != nil {
+		return fmt.Errorf("failed to create cert file: %w", err)
+	}
+	defer certOut.Close()
+
+	if err := pem.Encode(certOut, &pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: cc.Certificate.Raw,
+	}); err != nil {
+		return fmt.Errorf("failed to write certificate: %w", err)
+	}
+
+	// Save full chain if available
+	if len(cc.Chain) > 0 {
+		chainPath := filepath.Join(filepath.Dir(certPath), "fullchain.pem")
+		chainOut, err := os.Create(chainPath)
+		if err != nil {
+			return fmt.Errorf("failed to create chain file: %w", err)
+		}
+		defer chainOut.Close()
+
+		for _, cert := range cc.Chain {
+			if err := pem.Encode(chainOut, &pem.Block{
+				Type:  "CERTIFICATE",
+				Bytes: cert.Raw,
+			}); err != nil {
+				return fmt.Errorf("failed to write chain certificate: %w", err)
+			}
+		}
+	}
+
+	// Save private key
+	keyOut, err := os.Create(keyPath)
+	if err != nil {
+		return fmt.Errorf("failed to create key file: %w", err)
+	}
+	defer keyOut.Close()
+
+	privateKeyBytes, err := x509.MarshalPKCS8PrivateKey(cc.PrivateKey)
+	if err != nil {
+		return fmt.Errorf("failed to marshal private key: %w", err)
+	}
+
+	if err := pem.Encode(keyOut, &pem.Block{
+		Type:  "PRIVATE KEY",
+		Bytes: privateKeyBytes,
+	}); err != nil {
+		return fmt.Errorf("failed to write private key: %w", err)
+	}
+
+	// Set appropriate permissions
+	if err := os.Chmod(keyPath, 0600); err != nil {
+		return fmt.Errorf("failed to set key file permissions: %w", err)
 	}
 
 	return nil

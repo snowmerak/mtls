@@ -28,10 +28,12 @@ func main() {
 	// Certificate commands
 	certCmd := &cobra.Command{
 		Use:   "cert",
-		Short: "Manage server certificates",
+		Short: "Manage server and client certificates",
 	}
 	certCmd.AddCommand(createServerCertCmd())
 	certCmd.AddCommand(listServerCertsCmd())
+	certCmd.AddCommand(createClientCertCmd())
+	certCmd.AddCommand(listClientCertsCmd())
 	certCmd.AddCommand(inspectCmd())
 	certCmd.AddCommand(verifyCmd())
 

@@ -5,8 +5,12 @@ A powerful, user-friendly CLI tool for creating and managing mTLS (mutual TLS) c
 ## Features
 
 - 🔐 **Create Self-Signed Root CA** - Generate your own Certificate Authority
-- � **Create Intermediate CA** - Generate Intermediate CAs for multi-level trust chains
-- �📜 **Generate Server Certificates** - Create server certificates signed by your CA
+- ⛓️ **Create Intermediate CA** - Generate Intermediate CAs for multi-level trust chains
+- 📜 **Generate Server Certificates** - Create server certificates signed by your CA
+- 👤 **Generate Client Certificates** - Create client certificates for mTLS authentication
+- ✍️ **Sign CSRs** - Sign Certificate Signing Requests from external sources
+- 🚫 **Revoke Certificates** - Revoke certificates and generate CRLs
+- 🔍 **Inspect & Verify** - Inspect certificate details and verify chains
 - 🔑 **Multiple Key Types** - Support for RSA (2048/4096) and ECDSA (P-256/P-384/P-521)
 - 🎨 **Interactive CLI** - User-friendly prompts with sensible defaults
 - 📊 **Certificate Registry** - Track all your certificates in one place
@@ -79,11 +83,50 @@ You'll be prompted for:
 - Select existing CA or browse for one
 - Common Name (e.g., "api.example.com")
 - DNS names (comma-separated)
-- IP addresCAs (Root and Intermediate)
+- IP addresses (comma-separated)
+- Organization
+- Validity Period
+- Key Type
+
+### 4. Create a Client Certificate (Interactive Mode)
+
+```bash
+./mtls cert create-client
+```
+
+You'll be prompted for:
+- Select existing CA
+- Common Name (e.g., "client-1")
+- Organization
+- Validity Period
+- Key Type
+
+### 5. Other Operations
+
+```bash
+# List all CAs (Root and Intermediate)
 ./mtls ca list
 
 # List all server certificates
 ./mtls cert list
+
+# List all client certificates
+./mtls cert list-client
+
+# Sign a CSR
+./mtls ca sign
+
+# Revoke a certificate
+./mtls ca revoke
+
+# Generate CRL
+./mtls ca crl
+
+# Inspect a certificate
+./mtls cert inspect --cert ./path/to/cert.pem
+
+# Verify a certificate chain
+./mtls cert verify --cert ./path/to/cert.pem --root ./path/to/root.pem --intermediate ./path/to/inter.pem
 ```
 
 ## Batch Mode (Non-Interactive)
