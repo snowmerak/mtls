@@ -21,6 +21,7 @@ func main() {
 	}
 	caCmd.AddCommand(createCACmd())
 	caCmd.AddCommand(listCACmd())
+	caCmd.AddCommand(signCSRCmd())
 
 	// Certificate commands
 	certCmd := &cobra.Command{

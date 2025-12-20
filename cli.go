@@ -545,6 +545,166 @@ func createServerCertCmd() *cobra.Command {
 	return cmd
 }
 
+// signCSRCmd signs a CSR with a CA
+func signCSRCmd() *cobra.Command {
+	var caPath, csrPath, outputDir string
+	var validYears int
+
+	cmd := &cobra.Command{
+		Use:   "sign",
+		Short: "Sign a Certificate Signing Request (CSR)",
+		Long:  "Sign a CSR with a selected CA to generate a certificate",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			// Interactive prompts if flags are missing
+			if caPath == "" || csrPath == "" {
+				if err := promptSignCSRInfo(&caPath, &csrPath, &validYears, &outputDir); err != nil {
+					return err
+				}
+			}
+
+			// Load CA
+			s := spinner.New(spinner.CharSets[11], 100*time.Millisecond)
+			s.Suffix = " Loading CA..."
+			s.Start()
+
+			caCertPath := filepath.Join(caPath, "ca-cert.pem")
+			caKeyPath := filepath.Join(caPath, "ca-key.pem")
+			ca, err := LoadCAFromFiles(caCertPath, caKeyPath)
+			if err != nil {
+				s.Stop()
+				return fmt.Errorf("failed to load CA: %w", err)
+			}
+
+			// Load CSR
+			s.Suffix = " Loading CSR..."
+			csr, err := LoadCSRFromFile(csrPath)
+			if err != nil {
+				s.Stop()
+				return fmt.Errorf("failed to load CSR: %w", err)
+			}
+
+			// Sign CSR
+			s.Suffix = " Signing CSR..."
+			cert, err := ca.SignCSR(csr, validYears)
+			s.Stop()
+			if err != nil {
+				return fmt.Errorf("failed to sign CSR: %w", err)
+			}
+			successColor.Println("✓ CSR signed successfully")
+
+			// Save certificate
+			if outputDir == "" {
+				outputDir = "."
+			}
+			certPath := filepath.Join(outputDir, fmt.Sprintf("%s.crt", strings.ReplaceAll(csr.Subject.CommonName, " ", "_")))
+
+			if err := SaveCertificateToFile(cert, certPath); err != nil {
+				return fmt.Errorf("failed to save certificate: %w", err)
+			}
+
+			successColor.Printf("✓ Certificate saved to %s\n", certPath)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&caPath, "ca", "", "CA directory path")
+	cmd.Flags().StringVar(&csrPath, "csr", "", "CSR file path")
+	cmd.Flags().IntVar(&validYears, "years", 5, "Valid years")
+	cmd.Flags().StringVar(&outputDir, "output", "", "Output directory")
+
+	return cmd
+}
+
+func promptSignCSRInfo(caPath, csrPath *string, years *int, outputDir *string) error {
+	// Load registry to show available CAs
+	registry, err := LoadRegistry(defaultRegistryPath)
+	if err == nil && len(registry.CAs) > 0 {
+		caOptions := make([]string, len(registry.CAs))
+		caPaths := make(map[string]string)
+
+		for i, ca := range registry.CAs {
+			label := fmt.Sprintf("%s (expires %s)", ca.CommonName, ca.ExpiresAt.Format("2006-01-02"))
+			caOptions[i] = label
+			caPaths[label] = filepath.Dir(ca.CertPath)
+		}
+		caOptions = append(caOptions, "Browse for CA certificate...")
+
+		var selected string
+		prompt := &survey.Select{
+			Message: "Select CA:",
+			Options: caOptions,
+		}
+		if err := survey.AskOne(prompt, &selected); err != nil {
+			return err
+		}
+
+		if selected == "Browse for CA certificate..." {
+			prompt := &survey.Input{
+				Message: "CA directory path:",
+				Default: defaultCADir,
+			}
+			if err := survey.AskOne(prompt, caPath); err != nil {
+				return err
+			}
+		} else {
+			*caPath = caPaths[selected]
+		}
+	} else {
+		prompt := &survey.Input{
+			Message: "CA directory path:",
+			Default: defaultCADir,
+		}
+		if err := survey.AskOne(prompt, caPath); err != nil {
+			return err
+		}
+	}
+
+	questions := []*survey.Question{
+		{
+			Name: "csrPath",
+			Prompt: &survey.Input{
+				Message: "CSR file path:",
+			},
+			Validate: survey.Required,
+		},
+		{
+			Name: "validYears",
+			Prompt: &survey.Input{
+				Message: "Valid Years:",
+				Default: "5",
+			},
+		},
+		{
+			Name: "outputDir",
+			Prompt: &survey.Input{
+				Message: "Output directory:",
+				Default: ".",
+			},
+		},
+	}
+
+	answers := struct {
+		CsrPath    string
+		ValidYears string
+		OutputDir  string
+	}{}
+
+	if err := survey.Ask(questions, &answers); err != nil {
+		return err
+	}
+
+	*csrPath = answers.CsrPath
+	*outputDir = answers.OutputDir
+
+	// Parse valid years
+	fmt.Sscanf(answers.ValidYears, "%d", years)
+	if *years <= 0 {
+		*years = 5
+	}
+
+	return nil
+}
+
 func promptServerCertInfo(caPath, cn, org, dnsNames, ipAddresses *string, years *int, keyType, outputDir *string) error {
 	// Load registry to show available CAs
 	registry, err := LoadRegistry(defaultRegistryPath)

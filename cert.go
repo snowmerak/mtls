@@ -398,6 +398,91 @@ func (ca *CertificateAuthority) GenerateServerCertificateWithOptions(opts *Serve
 	}, nil
 }
 
+// SignCSR signs a Certificate Signing Request and returns a certificate
+func (ca *CertificateAuthority) SignCSR(csr *x509.CertificateRequest, validYears int) (*x509.Certificate, error) {
+	// Validate CSR signature
+	if err := csr.CheckSignature(); err != nil {
+		return nil, fmt.Errorf("invalid CSR signature: %w", err)
+	}
+
+	// Generate serial number
+	serialNumber, err := rand.Int(rand.Reader, new(big.Int).Lsh(big.NewInt(1), 128))
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate serial number: %w", err)
+	}
+
+	// Create certificate template
+	template := &x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject:      csr.Subject,
+		NotBefore:    time.Now(),
+		NotAfter:     time.Now().AddDate(validYears, 0, 0),
+		KeyUsage:     x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:  []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth, x509.ExtKeyUsageClientAuth},
+		DNSNames:     csr.DNSNames,
+		IPAddresses:  csr.IPAddresses,
+	}
+
+	// Get CA private key as crypto.Signer
+	caSigner, ok := ca.PrivateKey.(crypto.Signer)
+	if !ok {
+		return nil, fmt.Errorf("CA private key does not implement crypto.Signer")
+	}
+
+	// Create certificate signed by CA
+	certDER, err := x509.CreateCertificate(rand.Reader, template, ca.Certificate, csr.PublicKey, caSigner)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create certificate: %w", err)
+	}
+
+	// Parse certificate
+	cert, err := x509.ParseCertificate(certDER)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse certificate: %w", err)
+	}
+
+	return cert, nil
+}
+
+// LoadCSRFromFile loads a CSR from a file
+func LoadCSRFromFile(path string) (*x509.CertificateRequest, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read CSR file: %w", err)
+	}
+
+	block, _ := pem.Decode(data)
+	if block == nil {
+		return nil, fmt.Errorf("failed to decode PEM block")
+	}
+
+	csr, err := x509.ParseCertificateRequest(block.Bytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse CSR: %w", err)
+	}
+
+	return csr, nil
+}
+
+// SaveCertificateToFile saves a certificate to a file
+func SaveCertificateToFile(cert *x509.Certificate, path string) error {
+	// Create directory if it doesn't exist
+	if err := os.MkdirAll(filepath.Dir(path), 0755); err != nil {
+		return fmt.Errorf("failed to create directory: %w", err)
+	}
+
+	f, err := os.Create(path)
+	if err != nil {
+		return fmt.Errorf("failed to create file: %w", err)
+	}
+	defer f.Close()
+
+	return pem.Encode(f, &pem.Block{
+		Type:  "CERTIFICATE",
+		Bytes: cert.Raw,
+	})
+}
+
 // SaveCAToFiles saves the CA certificate and private key to files
 func (ca *CertificateAuthority) SaveCAToFiles(certPath, keyPath string) error {
 	// Create directory if it doesn't exist
