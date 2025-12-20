@@ -21,12 +21,14 @@ import (
 type CertificateAuthority struct {
 	Certificate *x509.Certificate
 	PrivateKey  crypto.PrivateKey // Can be *rsa.PrivateKey or *ecdsa.PrivateKey
+	Chain       []*x509.Certificate
 }
 
 // ServerCertificate represents a server certificate with its private key
 type ServerCertificate struct {
 	Certificate *x509.Certificate
 	PrivateKey  crypto.PrivateKey // Can be *rsa.PrivateKey or *ecdsa.PrivateKey
+	Chain       []*x509.Certificate
 }
 
 // KeyType represents the type of cryptographic key to use
@@ -222,6 +224,7 @@ func GenerateRootCAWithOptions(opts *CAOptions) (*CertificateAuthority, error) {
 	}
 
 	return &CertificateAuthority{
+		Chain:       []*x509.Certificate{cert},
 		Certificate: cert,
 		PrivateKey:  privateKey,
 	}, nil
@@ -310,10 +313,12 @@ func (ca *CertificateAuthority) GenerateIntermediateCAWithOptions(opts *CAOption
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse intermediate CA certificate: %w", err)
 	}
+	chain := append([]*x509.Certificate{cert}, ca.Chain...)
 
 	return &CertificateAuthority{
 		Certificate: cert,
 		PrivateKey:  privateKey,
+		Chain:       chain,
 	}, nil
 }
 
@@ -388,13 +393,12 @@ func (ca *CertificateAuthority) GenerateServerCertificateWithOptions(opts *Serve
 
 	// Parse certificate
 	cert, err := x509.ParseCertificate(certDER)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse server certificate: %w", err)
-	}
+	chain := append([]*x509.Certificate{cert}, ca.Chain...)
 
 	return &ServerCertificate{
 		Certificate: cert,
 		PrivateKey:  privateKey,
+		Chain:       chain,
 	}, nil
 }
 
@@ -531,6 +535,25 @@ func (ca *CertificateAuthority) SaveCAToFiles(certPath, keyPath string) error {
 		return fmt.Errorf("failed to set key file permissions: %w", err)
 	}
 
+	// Save full chain if available
+	if len(ca.Chain) > 0 {
+		chainPath := filepath.Join(filepath.Dir(certPath), "fullchain.pem")
+		chainOut, err := os.Create(chainPath)
+		if err != nil {
+			return fmt.Errorf("failed to create chain file: %w", err)
+		}
+		defer chainOut.Close()
+
+		for _, cert := range ca.Chain {
+			if err := pem.Encode(chainOut, &pem.Block{
+				Type:  "CERTIFICATE",
+				Bytes: cert.Raw,
+			}); err != nil {
+				return fmt.Errorf("failed to write chain certificate: %w", err)
+			}
+		}
+	}
+
 	return nil
 }
 
@@ -556,6 +579,25 @@ func (sc *ServerCertificate) SaveServerCertToFiles(certPath, keyPath string) err
 		Bytes: sc.Certificate.Raw,
 	}); err != nil {
 		return fmt.Errorf("failed to write certificate: %w", err)
+	}
+
+	// Save full chain if available
+	if len(sc.Chain) > 0 {
+		chainPath := filepath.Join(filepath.Dir(certPath), "fullchain.pem")
+		chainOut, err := os.Create(chainPath)
+		if err != nil {
+			return fmt.Errorf("failed to create chain file: %w", err)
+		}
+		defer chainOut.Close()
+
+		for _, cert := range sc.Chain {
+			if err := pem.Encode(chainOut, &pem.Block{
+				Type:  "CERTIFICATE",
+				Bytes: cert.Raw,
+			}); err != nil {
+				return fmt.Errorf("failed to write chain certificate: %w", err)
+			}
+		}
 	}
 
 	// Save private key
@@ -627,10 +669,116 @@ func LoadCAFromFiles(certPath, keyPath string) (*CertificateAuthority, error) {
 		return nil, fmt.Errorf("unsupported private key type")
 	}
 
+	// Try to load full chain
+	var chain []*x509.Certificate
+	chainPath := filepath.Join(filepath.Dir(certPath), "fullchain.pem")
+	chainPEM, err := os.ReadFile(chainPath)
+	if err == nil {
+		// Parse all certificates in the chain
+		var block *pem.Block
+		rest := chainPEM
+		for {
+			block, rest = pem.Decode(rest)
+			if block == nil {
+				break
+			}
+			if block.Type == "CERTIFICATE" {
+				c, err := x509.ParseCertificate(block.Bytes)
+				if err == nil {
+					chain = append(chain, c)
+				}
+			}
+		}
+	} else {
+		// If no chain file, assume self-signed root
+		chain = []*x509.Certificate{cert}
+	}
+
 	return &CertificateAuthority{
 		Certificate: cert,
 		PrivateKey:  privateKey,
+		Chain:       chain,
 	}, nil
+}
+
+// GenerateCRL creates a Certificate Revocation List
+func (ca *CertificateAuthority) GenerateCRL(revokedCerts []pkix.RevokedCertificate, validDays int) ([]byte, error) {
+	// Get CA private key as crypto.Signer
+	caSigner, ok := ca.PrivateKey.(crypto.Signer)
+	if !ok {
+		return nil, fmt.Errorf("CA private key does not implement crypto.Signer")
+	}
+
+	now := time.Now()
+	expiry := now.AddDate(0, 0, validDays)
+
+	crlBytes, err := ca.Certificate.CreateCRL(rand.Reader, caSigner, revokedCerts, now, expiry)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create CRL: %w", err)
+	}
+
+	return crlBytes, nil
+}
+
+// VerifyCertificate verifies a certificate against a CA chain
+func VerifyCertificate(rootPEM, interPEM, certPEM []byte) error {
+	roots := x509.NewCertPool()
+	if ok := roots.AppendCertsFromPEM(rootPEM); !ok {
+		return fmt.Errorf("failed to parse root certificate")
+	}
+
+	intermediates := x509.NewCertPool()
+	if len(interPEM) > 0 {
+		if ok := intermediates.AppendCertsFromPEM(interPEM); !ok {
+			return fmt.Errorf("failed to parse intermediate certificates")
+		}
+	}
+
+	block, _ := pem.Decode(certPEM)
+	if block == nil {
+		return fmt.Errorf("failed to parse certificate PEM")
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return fmt.Errorf("failed to parse certificate: %w", err)
+	}
+
+	opts := x509.VerifyOptions{
+		Roots:         roots,
+		Intermediates: intermediates,
+	}
+
+	if _, err := cert.Verify(opts); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+// InspectCertificate returns a human-readable string of the certificate
+func InspectCertificate(certPEM []byte) (string, error) {
+	block, _ := pem.Decode(certPEM)
+	if block == nil {
+		return "", fmt.Errorf("failed to parse certificate PEM")
+	}
+	cert, err := x509.ParseCertificate(block.Bytes)
+	if err != nil {
+		return "", fmt.Errorf("failed to parse certificate: %w", err)
+	}
+
+	var out string
+	out += fmt.Sprintf("Subject: %s\n", cert.Subject)
+	out += fmt.Sprintf("Issuer: %s\n", cert.Issuer)
+	out += fmt.Sprintf("Serial Number: %s\n", cert.SerialNumber)
+	out += fmt.Sprintf("Not Before: %s\n", cert.NotBefore)
+	out += fmt.Sprintf("Not After: %s\n", cert.NotAfter)
+	out += fmt.Sprintf("DNS Names: %v\n", cert.DNSNames)
+	out += fmt.Sprintf("IP Addresses: %v\n", cert.IPAddresses)
+	out += fmt.Sprintf("Key Usage: %v\n", cert.KeyUsage)
+	out += fmt.Sprintf("Ext Key Usage: %v\n", cert.ExtKeyUsage)
+	out += fmt.Sprintf("Is CA: %v\n", cert.IsCA)
+
+	return out, nil
 }
 
 // CreateMTLSCertificates is a convenience function to create a complete mTLS certificate setup

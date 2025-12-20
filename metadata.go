@@ -26,6 +26,8 @@ type CertMetadata struct {
 	DNSNames          []string  `json:"dns_names,omitempty"`
 	IPAddresses       []string  `json:"ip_addresses,omitempty"`
 	CAPath            string    `json:"ca_path,omitempty"` // For server certs
+	Revoked           bool      `json:"revoked,omitempty"`
+	RevokedAt         time.Time `json:"revoked_at,omitempty"`
 }
 
 // Registry manages all certificates and CAs

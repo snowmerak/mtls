@@ -22,6 +22,8 @@ func main() {
 	caCmd.AddCommand(createCACmd())
 	caCmd.AddCommand(listCACmd())
 	caCmd.AddCommand(signCSRCmd())
+	caCmd.AddCommand(revokeCmd())
+	caCmd.AddCommand(genCRLCmd())
 
 	// Certificate commands
 	certCmd := &cobra.Command{
@@ -30,6 +32,8 @@ func main() {
 	}
 	certCmd.AddCommand(createServerCertCmd())
 	certCmd.AddCommand(listServerCertsCmd())
+	certCmd.AddCommand(inspectCmd())
+	certCmd.AddCommand(verifyCmd())
 
 	// Add commands to root
 	rootCmd.AddCommand(caCmd)

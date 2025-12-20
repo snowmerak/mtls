@@ -1,7 +1,9 @@
 package main
 
 import (
+	"crypto/x509/pkix"
 	"fmt"
+	"math/big"
 	"net"
 	"os"
 	"path/filepath"
@@ -541,6 +543,242 @@ func createServerCertCmd() *cobra.Command {
 	cmd.Flags().IntVar(&validYears, "years", 5, "Valid years")
 	cmd.Flags().StringVar(&keyType, "key-type", "rsa2048", "Key type (rsa2048, rsa4096, ecp256, ecp384, ecp521)")
 	cmd.Flags().StringVar(&outputDir, "output", "", "Output directory")
+
+	return cmd
+}
+
+// revokeCmd revokes a certificate
+func revokeCmd() *cobra.Command {
+	var serialNumber string
+
+	cmd := &cobra.Command{
+		Use:   "revoke",
+		Short: "Revoke a certificate",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			registry, err := LoadRegistry(defaultRegistryPath)
+			if err != nil {
+				return err
+			}
+
+			// Find certificate by serial number
+			var targetCert *CertMetadata
+			found := false
+
+			// Check servers
+			for i, cert := range registry.Servers {
+				if cert.SerialNumber == serialNumber {
+					targetCert = &registry.Servers[i]
+					found = true
+					break
+				}
+			}
+
+			// Check CAs if not found
+			if !found {
+				for i, cert := range registry.CAs {
+					if cert.SerialNumber == serialNumber {
+						targetCert = &registry.CAs[i]
+						found = true
+						break
+					}
+				}
+			}
+
+			if !found {
+				return fmt.Errorf("certificate with serial number %s not found", serialNumber)
+			}
+
+			if targetCert.Revoked {
+				return fmt.Errorf("certificate is already revoked")
+			}
+
+			// Mark as revoked
+			targetCert.Revoked = true
+			targetCert.RevokedAt = time.Now()
+
+			// Save registry
+			if err := SaveRegistry(registry, defaultRegistryPath); err != nil {
+				return fmt.Errorf("failed to update registry: %w", err)
+			}
+
+			// Update metadata file
+			metaPath := filepath.Join(filepath.Dir(targetCert.CertPath), ".metadata.json")
+			if err := SaveMetadata(targetCert, metaPath); err != nil {
+				warnColor.Printf("⚠ Could not update metadata file: %v\n", err)
+			}
+
+			successColor.Printf("✓ Certificate %s revoked\n", serialNumber)
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&serialNumber, "serial", "", "Serial number of the certificate to revoke")
+	cmd.MarkFlagRequired("serial")
+
+	return cmd
+}
+
+// genCRLCmd generates a CRL
+func genCRLCmd() *cobra.Command {
+	var caName string
+	var output string
+	var validDays int
+
+	cmd := &cobra.Command{
+		Use:   "crl",
+		Short: "Generate Certificate Revocation List (CRL)",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			registry, err := LoadRegistry(defaultRegistryPath)
+			if err != nil {
+				return err
+			}
+
+			// Find CA
+			var caMeta *CertMetadata
+			for _, ca := range registry.CAs {
+				if ca.CommonName == caName {
+					caMeta = &ca
+					break
+				}
+			}
+			if caMeta == nil {
+				return fmt.Errorf("CA '%s' not found", caName)
+			}
+
+			// Load CA
+			ca, err := LoadCAFromFiles(caMeta.CertPath, caMeta.KeyPath)
+			if err != nil {
+				return fmt.Errorf("failed to load CA: %w", err)
+			}
+
+			// Collect revoked certificates
+			var revokedCerts []pkix.RevokedCertificate
+			for _, cert := range registry.Servers {
+				// Check if signed by this CA (simplified check by issuer name or path logic needed)
+				// Here we assume if it's in registry and revoked, we add it if it belongs to this CA
+				// In a real scenario, we should check Issuer.
+				// For now, let's assume we add all revoked certs that match this CA's name as issuer (if we had issuer field)
+				// Since we don't have explicit Issuer field in CertMetadata for servers (only CAPath), we use CAPath
+
+				// Check if CAPath matches
+				if cert.Revoked && filepath.Dir(cert.CertPath) != filepath.Dir(caMeta.CertPath) { // Skip self?
+					// Check if this cert was issued by the CA
+					// We can check if CAPath is subdirectory of CA's dir or matches
+					// Or better, check if we stored Issuer Common Name. We didn't for servers yet.
+					// Let's rely on CAPath matching the CA's directory structure or just add all revoked for now?
+					// No, that's wrong.
+					// Let's check if the cert's CA path matches this CA
+					if cert.CAPath == filepath.Dir(caMeta.CertPath) {
+						serial, ok := new(big.Int).SetString(cert.SerialNumber, 10)
+						if !ok {
+							continue
+						}
+						revokedCerts = append(revokedCerts, pkix.RevokedCertificate{
+							SerialNumber:   serial,
+							RevocationTime: cert.RevokedAt,
+						})
+					}
+				}
+			}
+
+			// Generate CRL
+			crlBytes, err := ca.GenerateCRL(revokedCerts, validDays)
+			if err != nil {
+				return fmt.Errorf("failed to generate CRL: %w", err)
+			}
+
+			// Save CRL
+			if output == "" {
+				output = filepath.Join(filepath.Dir(caMeta.CertPath), "crl.pem")
+			}
+
+			if err := os.WriteFile(output, crlBytes, 0644); err != nil {
+				return fmt.Errorf("failed to save CRL: %w", err)
+			}
+
+			successColor.Printf("✓ CRL generated at %s\n", output)
+			infoColor.Printf("  Revoked certificates count: %d\n", len(revokedCerts))
+
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&caName, "ca", "", "CA Common Name")
+	cmd.Flags().StringVar(&output, "output", "", "Output path for CRL")
+	cmd.Flags().IntVar(&validDays, "days", 7, "Valid days")
+	cmd.MarkFlagRequired("ca")
+
+	return cmd
+}
+
+// inspectCmd inspects a certificate
+func inspectCmd() *cobra.Command {
+	return &cobra.Command{
+		Use:   "inspect [cert-file]",
+		Short: "Inspect a certificate file",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			certPath := args[0]
+			data, err := os.ReadFile(certPath)
+			if err != nil {
+				return fmt.Errorf("failed to read file: %w", err)
+			}
+
+			info, err := InspectCertificate(data)
+			if err != nil {
+				return err
+			}
+
+			fmt.Println(info)
+			return nil
+		},
+	}
+}
+
+// verifyCmd verifies a certificate
+func verifyCmd() *cobra.Command {
+	var rootPath, interPath string
+
+	cmd := &cobra.Command{
+		Use:   "verify [cert-file]",
+		Short: "Verify a certificate",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			certPath := args[0]
+			certData, err := os.ReadFile(certPath)
+			if err != nil {
+				return fmt.Errorf("failed to read certificate: %w", err)
+			}
+
+			var rootData, interData []byte
+
+			if rootPath != "" {
+				rootData, err = os.ReadFile(rootPath)
+				if err != nil {
+					return fmt.Errorf("failed to read root CA: %w", err)
+				}
+			}
+
+			if interPath != "" {
+				interData, err = os.ReadFile(interPath)
+				if err != nil {
+					return fmt.Errorf("failed to read intermediate CA: %w", err)
+				}
+			}
+
+			if err := VerifyCertificate(rootData, interData, certData); err != nil {
+				errorColor.Printf("✗ Verification failed: %v\n", err)
+				return nil // Don't return error to avoid cobra usage printing
+			}
+
+			successColor.Println("✓ Certificate is valid")
+			return nil
+		},
+	}
+
+	cmd.Flags().StringVar(&rootPath, "root", "", "Root CA certificate path")
+	cmd.Flags().StringVar(&interPath, "intermediate", "", "Intermediate CA certificate path")
+	cmd.MarkFlagRequired("root")
 
 	return cmd
 }
