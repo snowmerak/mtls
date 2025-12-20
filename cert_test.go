@@ -3,13 +3,16 @@ package main
 import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
+	"crypto/rand"
 	"crypto/rsa"
 	"crypto/x509"
 	"crypto/x509/pkix"
+	"encoding/pem"
 	"net"
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func TestGenerateRootCAWithOptions(t *testing.T) {
@@ -786,5 +789,201 @@ func BenchmarkGenerateServerCertificate(b *testing.B) {
 		if err != nil {
 			b.Fatalf("Failed to generate server certificate: %v", err)
 		}
+	}
+}
+
+func TestIntermediateCA(t *testing.T) {
+	// 1. Generate Root CA
+	rootCA, err := GenerateRootCA("Test Root CA", 10)
+	if err != nil {
+		t.Fatalf("Failed to generate root CA: %v", err)
+	}
+
+	// 2. Generate Intermediate CA
+	interCA, err := rootCA.GenerateIntermediateCA("Test Intermediate CA", 5)
+	if err != nil {
+		t.Fatalf("Failed to generate intermediate CA: %v", err)
+	}
+
+	// Verify Intermediate CA properties
+	if !interCA.Certificate.IsCA {
+		t.Error("Intermediate certificate is not marked as CA")
+	}
+	if interCA.Certificate.Issuer.CommonName != "Test Root CA" {
+		t.Errorf("Expected Issuer 'Test Root CA', got '%s'", interCA.Certificate.Issuer.CommonName)
+	}
+	if interCA.Certificate.Subject.CommonName != "Test Intermediate CA" {
+		t.Errorf("Expected Subject 'Test Intermediate CA', got '%s'", interCA.Certificate.Subject.CommonName)
+	}
+
+	// Verify Chain
+	if len(interCA.Chain) != 2 {
+		t.Errorf("Expected chain length 2, got %d", len(interCA.Chain))
+	}
+	if !interCA.Chain[0].Equal(interCA.Certificate) {
+		t.Error("First cert in chain should be intermediate cert")
+	}
+	if !interCA.Chain[1].Equal(rootCA.Certificate) {
+		t.Error("Second cert in chain should be root cert")
+	}
+
+	// 3. Generate Server Certificate from Intermediate CA
+	serverCert, err := interCA.GenerateServerCertificate("server.example.com", []string{"server.example.com"}, nil, 2)
+	if err != nil {
+		t.Fatalf("Failed to generate server certificate from intermediate CA: %v", err)
+	}
+
+	// Verify Server Certificate
+	if serverCert.Certificate.Issuer.CommonName != "Test Intermediate CA" {
+		t.Errorf("Expected Issuer 'Test Intermediate CA', got '%s'", serverCert.Certificate.Issuer.CommonName)
+	}
+
+	// Verify Chain
+	if len(serverCert.Chain) != 3 {
+		t.Errorf("Expected chain length 3, got %d", len(serverCert.Chain))
+	}
+
+	// 4. Verify the full chain
+	roots := x509.NewCertPool()
+	roots.AddCert(rootCA.Certificate)
+
+	intermediates := x509.NewCertPool()
+	intermediates.AddCert(interCA.Certificate)
+
+	opts := x509.VerifyOptions{
+		Roots:         roots,
+		Intermediates: intermediates,
+		DNSName:       "server.example.com",
+	}
+
+	if _, err := serverCert.Certificate.Verify(opts); err != nil {
+		t.Errorf("Server certificate verification failed: %v", err)
+	}
+}
+
+func TestCSRSigning(t *testing.T) {
+	// 1. Generate CA
+	ca, err := GenerateRootCA("Test CA", 10)
+	if err != nil {
+		t.Fatalf("Failed to generate CA: %v", err)
+	}
+
+	// 2. Create a CSR
+	key, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("Failed to generate key: %v", err)
+	}
+
+	csrTemplate := &x509.CertificateRequest{
+		Subject: pkix.Name{
+			CommonName:   "csr.example.com",
+			Organization: []string{"CSR Org"},
+		},
+		DNSNames: []string{"csr.example.com"},
+	}
+
+	csrBytes, err := x509.CreateCertificateRequest(rand.Reader, csrTemplate, key)
+	if err != nil {
+		t.Fatalf("Failed to create CSR: %v", err)
+	}
+
+	csr, err := x509.ParseCertificateRequest(csrBytes)
+	if err != nil {
+		t.Fatalf("Failed to parse CSR: %v", err)
+	}
+
+	// 3. Sign CSR
+	cert, err := ca.SignCSR(csr, 2)
+	if err != nil {
+		t.Fatalf("Failed to sign CSR: %v", err)
+	}
+
+	// 4. Verify Certificate
+	if cert.Subject.CommonName != "csr.example.com" {
+		t.Errorf("Expected CN 'csr.example.com', got '%s'", cert.Subject.CommonName)
+	}
+	if cert.Issuer.CommonName != "Test CA" {
+		t.Errorf("Expected Issuer 'Test CA', got '%s'", cert.Issuer.CommonName)
+	}
+
+	// Verify signature
+	if err := cert.CheckSignatureFrom(ca.Certificate); err != nil {
+		t.Errorf("Certificate signature verification failed: %v", err)
+	}
+}
+
+func TestRevocationAndCRL(t *testing.T) {
+	// 1. Generate CA
+	ca, err := GenerateRootCA("Test CA", 10)
+	if err != nil {
+		t.Fatalf("Failed to generate CA: %v", err)
+	}
+
+	// 2. Generate a certificate to revoke
+	cert1, err := ca.GenerateServerCertificate("revoked.example.com", nil, nil, 1)
+	if err != nil {
+		t.Fatalf("Failed to generate cert1: %v", err)
+	}
+
+	// 3. Create RevokedCertificate list
+	revokedCerts := []pkix.RevokedCertificate{
+		{
+			SerialNumber:   cert1.Certificate.SerialNumber,
+			RevocationTime: time.Now(),
+		},
+	}
+
+	// 4. Generate CRL
+	crlBytes, err := ca.GenerateCRL(revokedCerts, 7)
+	if err != nil {
+		t.Fatalf("Failed to generate CRL: %v", err)
+	}
+
+	// 5. Parse CRL
+	crl, err := x509.ParseCRL(crlBytes)
+	if err != nil {
+		t.Fatalf("Failed to parse CRL: %v", err)
+	}
+
+	// 6. Verify CRL
+	if err := ca.Certificate.CheckCRLSignature(crl); err != nil {
+		t.Errorf("CRL signature verification failed: %v", err)
+	}
+
+	// Check if cert1 is in CRL
+	found := false
+	for _, revoked := range crl.TBSCertList.RevokedCertificates {
+		if revoked.SerialNumber.Cmp(cert1.Certificate.SerialNumber) == 0 {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("Revoked certificate not found in CRL")
+	}
+}
+
+func TestVerifyCertificateHelper(t *testing.T) {
+	// 1. Setup Chain: Root -> Inter -> Server
+	rootCA, _ := GenerateRootCA("Root", 10)
+	interCA, _ := rootCA.GenerateIntermediateCA("Inter", 5)
+	serverCert, _ := interCA.GenerateServerCertificate("server", nil, nil, 1)
+
+	// Encode to PEM
+	rootPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: rootCA.Certificate.Raw})
+	interPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: interCA.Certificate.Raw})
+	serverPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: serverCert.Certificate.Raw})
+
+	// 2. Verify Valid Chain
+	if err := VerifyCertificate(rootPEM, interPEM, serverPEM); err != nil {
+		t.Errorf("Valid chain verification failed: %v", err)
+	}
+
+	// 3. Verify Invalid Chain (wrong root)
+	otherRoot, _ := GenerateRootCA("Other Root", 10)
+	otherRootPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: otherRoot.Certificate.Raw})
+
+	if err := VerifyCertificate(otherRootPEM, interPEM, serverPEM); err == nil {
+		t.Error("Verification should fail with wrong root")
 	}
 }
