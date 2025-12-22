@@ -1,0 +1,39 @@
+# yaml-language-server: $schema=https://taskfile.dev/schema.json
+
+version: '3'
+
+tasks:
+  build:web:
+    desc: Build the web application
+    dir: web
+    cmds:
+      - echo "Building web application..."
+      - bun install
+      - bun run build
+
+  build:app:
+    desc: Build the mobile application
+    cmds:
+      - echo "Building mobile application..."
+      - go mod download
+      - go build -o mtls .
+
+  build:
+    desc: Build both web and mobile applications
+    cmds:
+      - task: build:web
+      - task: build:app
+  
+  test:
+    desc: Run tests for both web and mobile applications
+    cmds:
+      - echo "Running web application tests..."
+      - go test ./...
+  
+  install:
+    desc: Install mtls tool globally
+    cmds:
+      - echo "Installing mtls tool..."
+      - task: build:web
+      - go install
+  
