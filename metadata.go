@@ -105,16 +105,40 @@ func SaveRegistry(registry *Registry, path string) error {
 
 // AddCA adds a CA to the registry
 func (r *Registry) AddCA(metadata CertMetadata) {
+	// Remove existing CA with same CommonName
+	var newCAs []CertMetadata
+	for _, ca := range r.CAs {
+		if ca.CommonName != metadata.CommonName {
+			newCAs = append(newCAs, ca)
+		}
+	}
+	r.CAs = newCAs
 	r.CAs = append(r.CAs, metadata)
 }
 
 // AddServer adds a server certificate to the registry
 func (r *Registry) AddServer(metadata CertMetadata) {
+	// Remove existing server with same CommonName
+	var newServers []CertMetadata
+	for _, s := range r.Servers {
+		if s.CommonName != metadata.CommonName {
+			newServers = append(newServers, s)
+		}
+	}
+	r.Servers = newServers
 	r.Servers = append(r.Servers, metadata)
 }
 
 // AddClient adds a client certificate to the registry
 func (r *Registry) AddClient(metadata CertMetadata) {
+	// Remove existing client with same CommonName
+	var newClients []CertMetadata
+	for _, c := range r.Clients {
+		if c.CommonName != metadata.CommonName {
+			newClients = append(newClients, c)
+		}
+	}
+	r.Clients = newClients
 	r.Clients = append(r.Clients, metadata)
 }
 
