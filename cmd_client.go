@@ -297,7 +297,7 @@ func promptClientCertInfo(caPath, cn, org, dnsNames, ipAddresses *string, years 
 			Name: "keyType",
 			Prompt: &survey.Select{
 				Message: "Key Type:",
-				Options: []string{"rsa2048", "rsa4096", "ecp256", "ecp384", "ecp521"},
+				Options: []string{"rsa2048", "rsa4096", "ecp256", "ecp384", "ecp521", "ed25519"},
 				Default: "rsa2048",
 			},
 		},

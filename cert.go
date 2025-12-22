@@ -3,6 +3,7 @@ package main
 import (
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
@@ -47,6 +48,7 @@ const (
 	KeyTypeECP256  KeyType = "ecp256" // ECDSA P-256
 	KeyTypeECP384  KeyType = "ecp384" // ECDSA P-384
 	KeyTypeECP521  KeyType = "ecp521" // ECDSA P-521
+	KeyTypeEd25519 KeyType = "ed25519"
 )
 
 // CAOptions contains options for generating a Certificate Authority
@@ -177,6 +179,9 @@ func generatePrivateKey(keyType KeyType) (crypto.PrivateKey, error) {
 		return ecdsa.GenerateKey(elliptic.P384(), rand.Reader)
 	case KeyTypeECP521:
 		return ecdsa.GenerateKey(elliptic.P521(), rand.Reader)
+	case KeyTypeEd25519:
+		_, priv, err := ed25519.GenerateKey(rand.Reader)
+		return priv, err
 	default:
 		return nil, fmt.Errorf("unsupported key type: %s", keyType)
 	}
@@ -189,6 +194,8 @@ func getPublicKey(privateKey crypto.PrivateKey) (crypto.PublicKey, error) {
 		return &key.PublicKey, nil
 	case *ecdsa.PrivateKey:
 		return &key.PublicKey, nil
+	case ed25519.PrivateKey:
+		return key.Public(), nil
 	default:
 		return nil, fmt.Errorf("unsupported private key type")
 	}

@@ -540,7 +540,7 @@ func promptCAInfo(caType, parentCA, cn, org, country *string, years *int, keyTyp
 			Name: "keyType",
 			Prompt: &survey.Select{
 				Message: "Key Type:",
-				Options: []string{"rsa4096", "rsa2048", "ecp256", "ecp384", "ecp521"},
+				Options: []string{"rsa4096", "rsa2048", "ecp256", "ecp384", "ecp521", "ed25519"},
 				Default: "rsa4096",
 			},
 		},
