@@ -128,6 +128,12 @@ func createClientCertCmd() *cobra.Command {
 				return err
 			}
 
+			// Convert IPs to strings
+			ipStrings := make([]string, len(ipList))
+			for i, ip := range ipList {
+				ipStrings[i] = ip.String()
+			}
+
 			// Save metadata
 			metadata := &CertMetadata{
 				Type:              "client",
@@ -142,6 +148,8 @@ func createClientCertCmd() *cobra.Command {
 				KeyPath:           keyPath,
 				Issuer:            ca.Certificate.Subject.CommonName,
 				CAPath:            caPath,
+				DNSNames:          dnsNamesList,
+				IPAddresses:       ipStrings,
 			}
 
 			if err := SaveMetadata(metadata, metadataPath); err != nil {
