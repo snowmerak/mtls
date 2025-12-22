@@ -12,7 +12,7 @@ var (
 	CertificatesColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
 		{Name: "common_name", Type: field.TypeString},
-		{Name: "serial_number", Type: field.TypeString, Unique: true},
+		{Name: "serial_number", Type: field.TypeString},
 		{Name: "type", Type: field.TypeEnum, Enums: []string{"root_ca", "intermediate_ca", "server", "client"}},
 		{Name: "status", Type: field.TypeEnum, Enums: []string{"valid", "revoked", "expired"}, Default: "valid"},
 		{Name: "created_at", Type: field.TypeTime},

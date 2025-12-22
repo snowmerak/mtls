@@ -17,7 +17,7 @@ type Certificate struct {
 func (Certificate) Fields() []ent.Field {
 	return []ent.Field{
 		field.String("common_name"),
-		field.String("serial_number").Unique(),
+		field.String("serial_number"),
 		field.Enum("type").Values("root_ca", "intermediate_ca", "server", "client"),
 		field.Enum("status").Values("valid", "revoked", "expired").Default("valid"),
 		field.Time("created_at").Default(time.Now),

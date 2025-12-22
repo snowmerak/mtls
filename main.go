@@ -50,6 +50,7 @@ func main() {
 	rootCmd.AddCommand(caCmd)
 	rootCmd.AddCommand(certCmd)
 	rootCmd.AddCommand(createTreeCmd())
+	rootCmd.AddCommand(dbCmd())
 
 	// Version command
 	versionCmd := &cobra.Command{

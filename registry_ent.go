@@ -44,9 +44,13 @@ func SaveCertificateToDB(ctx context.Context, meta CertMetadata) error {
 		return fmt.Errorf("database client not initialized")
 	}
 
-	// Check if certificate with same Serial Number exists
+	// Check if certificate with same Serial Number and Common Name exists
+	// We use both because Serial Number might not be unique across different CAs
 	exists, err := dbClient.Certificate.Query().
-		Where(certificate.SerialNumber(meta.SerialNumber)).
+		Where(
+			certificate.SerialNumber(meta.SerialNumber),
+			certificate.CommonName(meta.CommonName),
+		).
 		Exist(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to check existing certificate: %w", err)
