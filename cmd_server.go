@@ -82,7 +82,9 @@ func createServerCertCmd() *cobra.Command {
 
 			// Create server cert options
 			opts := DefaultServerCertOptions(commonName)
-			opts.Subject.Organization = []string{organization}
+			if organization != "" {
+				opts.Subject.Organization = []string{organization}
+			}
 			opts.DNSNames = dnsNamesList
 			opts.IPAddresses = ipList
 			opts.ValidYears = validYears
@@ -381,8 +383,7 @@ func promptServerCertInfo(caPath, cn, org, dnsNames, ipAddresses *string, years 
 		{
 			Name: "organization",
 			Prompt: &survey.Input{
-				Message: "Organization:",
-				Default: "Server Certificate",
+				Message: "Organization (optional):",
 			},
 		},
 		{

@@ -45,8 +45,12 @@ func createCACmd() *cobra.Command {
 
 			// Create CA options
 			opts := DefaultCAOptions(commonName)
-			opts.Subject.Organization = []string{organization}
-			opts.Subject.Country = []string{country}
+			if organization != "" {
+				opts.Subject.Organization = []string{organization}
+			}
+			if country != "" {
+				opts.Subject.Country = []string{country}
+			}
 			opts.ValidYears = validYears
 			opts.KeyType = KeyType(keyType)
 
@@ -516,15 +520,13 @@ func promptCAInfo(caType, parentCA, cn, org, country *string, years *int, keyTyp
 		{
 			Name: "organization",
 			Prompt: &survey.Input{
-				Message: "Organization:",
-				Default: "Self-Signed CA",
+				Message: "Organization (optional):",
 			},
 		},
 		{
 			Name: "country",
 			Prompt: &survey.Input{
-				Message: "Country Code:",
-				Default: "KR",
+				Message: "Country Code (optional):",
 			},
 		},
 		{

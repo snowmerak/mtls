@@ -102,6 +102,12 @@ type ClientCertOptions struct {
 	// Subject information
 	Subject pkix.Name
 
+	// DNS names for Subject Alternative Names
+	DNSNames []string
+
+	// IP addresses for Subject Alternative Names
+	IPAddresses []net.IP
+
 	// Validity period in years
 	ValidYears int
 
@@ -120,10 +126,7 @@ func DefaultCAOptions(commonName string) *CAOptions {
 	keyUsage := x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature | x509.KeyUsageCertSign
 	return &CAOptions{
 		Subject: pkix.Name{
-			Country:            []string{"KR"},
-			Organization:       []string{"Self-Signed CA"},
-			OrganizationalUnit: []string{"IT Department"},
-			CommonName:         commonName,
+			CommonName: commonName,
 		},
 		ValidYears:  10,
 		KeyType:     KeyTypeRSA4096,
@@ -138,10 +141,7 @@ func DefaultServerCertOptions(commonName string) *ServerCertOptions {
 	keyUsage := x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature
 	return &ServerCertOptions{
 		Subject: pkix.Name{
-			Country:            []string{"KR"},
-			Organization:       []string{"Server Certificate"},
-			OrganizationalUnit: []string{"IT Department"},
-			CommonName:         commonName,
+			CommonName: commonName,
 		},
 		ValidYears:  5,
 		KeyType:     KeyTypeRSA2048,
@@ -155,10 +155,7 @@ func DefaultClientCertOptions(commonName string) *ClientCertOptions {
 	keyUsage := x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature
 	return &ClientCertOptions{
 		Subject: pkix.Name{
-			Country:            []string{"KR"},
-			Organization:       []string{"Client Certificate"},
-			OrganizationalUnit: []string{"IT Department"},
-			CommonName:         commonName,
+			CommonName: commonName,
 		},
 		ValidYears:  5,
 		KeyType:     KeyTypeRSA2048,
@@ -495,6 +492,8 @@ func (ca *CertificateAuthority) GenerateClientCertificateWithOptions(opts *Clien
 		NotAfter:     time.Now().AddDate(opts.ValidYears, 0, 0),
 		KeyUsage:     keyUsage,
 		ExtKeyUsage:  extKeyUsage,
+		DNSNames:     opts.DNSNames,
+		IPAddresses:  opts.IPAddresses,
 	}
 
 	// Get CA private key as crypto.Signer

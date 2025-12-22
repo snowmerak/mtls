@@ -3,7 +3,9 @@ package main
 import (
 	"crypto/sha256"
 	"fmt"
+	"net"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/AlecAivazis/survey/v2"
@@ -14,7 +16,7 @@ import (
 // createClientCertCmd creates a new client certificate
 func createClientCertCmd() *cobra.Command {
 	var batch bool
-	var caPath, commonName, organization, outputDir string
+	var caPath, commonName, organization, dnsNames, ipAddresses, outputDir string
 	var validYears int
 	var keyType string
 
@@ -25,7 +27,7 @@ func createClientCertCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			// Interactive mode if not batch
 			if !batch {
-				if err := promptClientCertInfo(&caPath, &commonName, &organization, &validYears, &keyType, &outputDir); err != nil {
+				if err := promptClientCertInfo(&caPath, &commonName, &organization, &dnsNames, &ipAddresses, &validYears, &keyType, &outputDir); err != nil {
 					return err
 				}
 			}
@@ -54,9 +56,37 @@ func createClientCertCmd() *cobra.Command {
 			}
 			successColor.Println("✓ CA loaded")
 
+			// Parse DNS names and IPs
+			var dnsNamesList []string
+			var ipList []net.IP
+
+			if dnsNames != "" {
+				dnsNamesList = strings.Split(dnsNames, ",")
+				for i := range dnsNamesList {
+					dnsNamesList[i] = strings.TrimSpace(dnsNamesList[i])
+				}
+			}
+
+			if ipAddresses != "" {
+				ips := strings.Split(ipAddresses, ",")
+				for _, ipStr := range ips {
+					ipStr = strings.TrimSpace(ipStr)
+					ip := net.ParseIP(ipStr)
+					if ip == nil {
+						warnColor.Printf("⚠ Invalid IP address: %s\n", ipStr)
+						continue
+					}
+					ipList = append(ipList, ip)
+				}
+			}
+
 			// Create client cert options
 			opts := DefaultClientCertOptions(commonName)
-			opts.Subject.Organization = []string{organization}
+			if organization != "" {
+				opts.Subject.Organization = []string{organization}
+			}
+			opts.DNSNames = dnsNamesList
+			opts.IPAddresses = ipList
 			opts.ValidYears = validYears
 			opts.KeyType = KeyType(keyType)
 
@@ -183,7 +213,7 @@ func listClientCertsCmd() *cobra.Command {
 	}
 }
 
-func promptClientCertInfo(caPath, cn, org *string, years *int, keyType, outputDir *string) error {
+func promptClientCertInfo(caPath, cn, org, dnsNames, ipAddresses *string, years *int, keyType, outputDir *string) error {
 	// Load registry to show available CAs
 	registry, err := LoadRegistry(defaultRegistryPath)
 	if err == nil && len(registry.CAs) > 0 {
@@ -237,10 +267,23 @@ func promptClientCertInfo(caPath, cn, org *string, years *int, keyType, outputDi
 			Validate: survey.Required,
 		},
 		{
+			Name: "dnsNames",
+			Prompt: &survey.Input{
+				Message: "DNS names (comma separated, optional):",
+				Help:    "e.g., client.example.com",
+			},
+		},
+		{
+			Name: "ipAddresses",
+			Prompt: &survey.Input{
+				Message: "IP addresses (comma separated, optional):",
+				Help:    "e.g., 192.168.1.100",
+			},
+		},
+		{
 			Name: "organization",
 			Prompt: &survey.Input{
-				Message: "Organization:",
-				Default: "Client Certificate",
+				Message: "Organization (optional):",
 			},
 		},
 		{
@@ -263,6 +306,8 @@ func promptClientCertInfo(caPath, cn, org *string, years *int, keyType, outputDi
 	answers := struct {
 		CommonName   string
 		Organization string
+		DNSNames     string
+		IPAddresses  string
 		ValidYears   string
 		KeyType      string
 	}{}
@@ -273,6 +318,8 @@ func promptClientCertInfo(caPath, cn, org *string, years *int, keyType, outputDi
 
 	*cn = answers.CommonName
 	*org = answers.Organization
+	*dnsNames = answers.DNSNames
+	*ipAddresses = answers.IPAddresses
 	*keyType = answers.KeyType
 	*outputDir = filepath.Join(defaultClientDir, *cn)
 
