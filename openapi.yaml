@@ -1,0 +1,294 @@
+openapi: 3.0.0
+info:
+  title: mTLS Manager API
+  version: 1.0.0
+  description: API for managing mTLS certificates
+servers:
+  - url: http://localhost:8080
+paths:
+  /ca:
+    get:
+      summary: List Certificate Authorities
+      tags: [CA]
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Certificate'
+    post:
+      summary: Create a Certificate Authority
+      tags: [CA]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCARequest'
+      responses:
+        '201':
+          description: CA Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/CertificateMetadata'
+        '400':
+          description: Bad Request
+        '500':
+          description: Internal Server Error
+
+  /cert/server:
+    get:
+      summary: List Server Certificates
+      tags: [Server]
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Certificate'
+    post:
+      summary: Create Server Certificate
+      tags: [Server]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateServerCertRequest'
+      responses:
+        '201':
+          description: Certificate Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/CertificateMetadata'
+        '400':
+          description: Bad Request
+        '500':
+          description: Internal Server Error
+
+  /cert/client:
+    get:
+      summary: List Client Certificates
+      tags: [Client]
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Certificate'
+    post:
+      summary: Create Client Certificate
+      tags: [Client]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateClientCertRequest'
+      responses:
+        '201':
+          description: Certificate Created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  message:
+                    type: string
+                  data:
+                    $ref: '#/components/schemas/CertificateMetadata'
+        '400':
+          description: Bad Request
+        '500':
+          description: Internal Server Error
+
+components:
+  schemas:
+    CreateCARequest:
+      type: object
+      required:
+        - commonName
+      properties:
+        commonName:
+          type: string
+        organization:
+          type: string
+        country:
+          type: string
+        validYears:
+          type: integer
+          default: 10
+        keyType:
+          type: string
+          default: rsa4096
+        type:
+          type: string
+          enum: [root, intermediate]
+          default: root
+        parentCA:
+          type: string
+          description: Required if type is intermediate
+
+    CreateServerCertRequest:
+      type: object
+      required:
+        - commonName
+        - caName
+      properties:
+        commonName:
+          type: string
+        organization:
+          type: string
+        dnsNames:
+          type: array
+          items:
+            type: string
+        ipAddresses:
+          type: array
+          items:
+            type: string
+        validYears:
+          type: integer
+          default: 5
+        keyType:
+          type: string
+          default: rsa2048
+        caName:
+          type: string
+
+    CreateClientCertRequest:
+      type: object
+      required:
+        - commonName
+        - caName
+      properties:
+        commonName:
+          type: string
+        organization:
+          type: string
+        dnsNames:
+          type: array
+          items:
+            type: string
+        ipAddresses:
+          type: array
+          items:
+            type: string
+        validYears:
+          type: integer
+          default: 5
+        keyType:
+          type: string
+          default: rsa2048
+        caName:
+          type: string
+
+    Certificate:
+      type: object
+      properties:
+        id:
+          type: integer
+        type:
+          type: string
+        commonName:
+          type: string
+        serialNumber:
+          type: string
+        status:
+          type: string
+        organization:
+          type: string
+        country:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        keyType:
+          type: string
+        fingerprint:
+          type: string
+        certPath:
+          type: string
+        keyPath:
+          type: string
+        issuer:
+          $ref: '#/components/schemas/Certificate'
+
+    CertificateMetadata:
+      type: object
+      properties:
+        type:
+          type: string
+        commonName:
+          type: string
+        organization:
+          type: string
+        country:
+          type: string
+        dnsNames:
+          type: array
+          items:
+            type: string
+        ipAddresses:
+          type: array
+          items:
+            type: string
+        keyType:
+          type: string
+        createdAt:
+          type: string
+          format: date-time
+        expiresAt:
+          type: string
+          format: date-time
+        serialNumber:
+          type: string
+        fingerprintSHA256:
+          type: string
+        certPath:
+          type: string
+        keyPath:
+          type: string
+        caPath:
+          type: string
+        issuer:
+          type: string

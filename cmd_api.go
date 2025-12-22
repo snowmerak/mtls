@@ -2,8 +2,10 @@ package main
 
 import (
 	"context"
+	"embed"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"net"
 	"net/http"
 	"os"
@@ -13,6 +15,9 @@ import (
 
 	"github.com/spf13/cobra"
 )
+
+//go:embed web/dist
+var content embed.FS
 
 func serverCmd() *cobra.Command {
 	var port int
@@ -37,9 +42,43 @@ func serverCmd() *cobra.Command {
 			mux.HandleFunc("POST /cert/client", handleCreateClientCert)
 			mux.HandleFunc("GET /cert/client", handleListClientCerts)
 
+			// Static files
+			distFS, err := fs.Sub(content, "web/dist")
+			if err != nil {
+				return err
+			}
+
+			fileServer := http.FileServer(http.FS(distFS))
+			mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+				// Check if file exists in FS
+				path := strings.TrimPrefix(r.URL.Path, "/")
+				if path == "" {
+					path = "index.html"
+				}
+
+				f, err := distFS.Open(path)
+				if err != nil {
+					// File not found, serve index.html for SPA routing
+					// But only if it's not an API call (though API calls should be caught by other handlers)
+					// And only if it's not a static asset request that really failed
+					if os.IsNotExist(err) {
+						r.URL.Path = "/"
+						fileServer.ServeHTTP(w, r)
+						return
+					}
+				} else {
+					f.Close()
+				}
+
+				fileServer.ServeHTTP(w, r)
+			})
+
+			// CORS middleware
+			handler := corsMiddleware(mux)
+
 			addr := fmt.Sprintf("%s:%d", host, port)
 			infoColor.Printf("Starting server on %s\n", addr)
-			return http.ListenAndServe(addr, mux)
+			return http.ListenAndServe(addr, handler)
 		},
 	}
 
@@ -47,6 +86,21 @@ func serverCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&host, "host", "H", "0.0.0.0", "Host to listen on")
 
 	return cmd
+}
+
+func corsMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS, PUT, DELETE")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+
+		if r.Method == "OPTIONS" {
+			w.WriteHeader(http.StatusOK)
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
 }
 
 // API Response structures
