@@ -3,18 +3,22 @@ const API_BASE = "http://localhost:8080";
 export interface Certificate {
   id: number;
   type: string;
-  commonName: string;
-  serialNumber: string;
+  common_name: string;
+  serial_number: string;
   status: string;
   organization?: string;
   country?: string;
-  createdAt: string;
-  expiresAt: string;
-  keyType?: string;
+  created_at: string;
+  expires_at: string;
+  key_type?: string;
   fingerprint?: string;
-  certPath?: string;
-  keyPath?: string;
-  issuer?: Certificate;
+  cert_path?: string;
+  key_path?: string;
+  edges?: {
+    issuer?: Certificate;
+  };
+  dns_names?: string[];
+  ip_addresses?: string[];
 }
 
 export interface CreateCARequest {

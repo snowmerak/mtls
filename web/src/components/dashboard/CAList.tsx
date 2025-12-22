@@ -128,8 +128,8 @@ export function CAList() {
                     </SelectTrigger>
                     <SelectContent>
                       {cas.map((ca) => (
-                        <SelectItem key={ca.id} value={ca.commonName}>
-                          {ca.commonName}
+                        <SelectItem key={ca.id} value={ca.common_name}>
+                          {ca.common_name}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -160,10 +160,10 @@ export function CAList() {
               <tbody>
                 {cas.map((ca) => (
                   <tr key={ca.id} className="border-t">
-                    <td className="p-4">{ca.commonName}</td>
+                    <td className="p-4">{ca.common_name}</td>
                     <td className="p-4">{ca.type}</td>
-                    <td className="p-4 font-mono text-xs">{ca.serialNumber}</td>
-                    <td className="p-4">{new Date(ca.expiresAt).toLocaleDateString()}</td>
+                    <td className="p-4 font-mono text-xs">{ca.serial_number}</td>
+                    <td className="p-4">{new Date(ca.expires_at).toLocaleDateString()}</td>
                   </tr>
                 ))}
                 {cas.length === 0 && (

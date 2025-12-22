@@ -84,8 +84,8 @@ export function ServerCertList() {
                   </SelectTrigger>
                   <SelectContent>
                     {cas.map((ca) => (
-                      <SelectItem key={ca.id} value={ca.commonName}>
-                        {ca.commonName}
+                      <SelectItem key={ca.id} value={ca.common_name}>
+                        {ca.common_name}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -162,10 +162,10 @@ export function ServerCertList() {
               <tbody>
                 {certs.map((cert) => (
                   <tr key={cert.id} className="border-t">
-                    <td className="p-4">{cert.commonName}</td>
-                    <td className="p-4">{cert.issuer?.commonName || "-"}</td>
-                    <td className="p-4 font-mono text-xs">{cert.serialNumber}</td>
-                    <td className="p-4">{new Date(cert.expiresAt).toLocaleDateString()}</td>
+                    <td className="p-4">{cert.common_name}</td>
+                    <td className="p-4">{cert.edges?.issuer?.common_name || "-"}</td>
+                    <td className="p-4 font-mono text-xs">{cert.serial_number}</td>
+                    <td className="p-4">{new Date(cert.expires_at).toLocaleDateString()}</td>
                   </tr>
                 ))}
                 {certs.length === 0 && (
