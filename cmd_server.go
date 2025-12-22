@@ -151,12 +151,14 @@ func createServerCertCmd() *cobra.Command {
 				KeyType:           keyType,
 				CreatedAt:         time.Now(),
 				ExpiresAt:         time.Now().AddDate(validYears, 0, 0),
+				SerialNumber:      serverCert.Certificate.SerialNumber.String(),
 				FingerprintSHA256: fingerprint,
 				CertPath:          certPath,
 				KeyPath:           keyPath,
 				DNSNames:          dnsNamesList,
 				IPAddresses:       ipStrings,
 				CAPath:            caPath,
+				Issuer:            ca.Certificate.Subject.CommonName,
 			}
 
 			if err := SaveMetadata(&metadata, metadataPath); err != nil {
