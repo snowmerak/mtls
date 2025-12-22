@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { api, Certificate, CreateCARequest } from "@/lib/api";
+import { api, type Certificate, type CreateCARequest } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
