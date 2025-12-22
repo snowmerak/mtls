@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"fmt"
 	"net"
@@ -156,6 +157,11 @@ func createClientCertCmd() *cobra.Command {
 				s.Stop()
 				errorColor.Printf("✗ Failed to save metadata: %v\n", err)
 				return err
+			}
+
+			// Save to DB
+			if err := SaveCertificateToDB(context.Background(), *metadata); err != nil {
+				warnColor.Printf("⚠ Could not save to database: %v\n", err)
 			}
 
 			// Update registry

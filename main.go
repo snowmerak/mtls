@@ -12,6 +12,15 @@ func main() {
 		Use:   "mtls",
 		Short: "mTLS Certificate Management Tool",
 		Long:  `A CLI tool for creating and managing mTLS certificates including Root CAs and server certificates.`,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			// Ensure certs directory exists
+			if err := os.MkdirAll("./certs", 0755); err != nil {
+				return err
+			}
+			// Initialize DB
+			_, err := InitDB("./certs/registry.db")
+			return err
+		},
 	}
 
 	// CA commands
@@ -40,6 +49,7 @@ func main() {
 	// Add commands to root
 	rootCmd.AddCommand(caCmd)
 	rootCmd.AddCommand(certCmd)
+	rootCmd.AddCommand(createTreeCmd())
 
 	// Version command
 	versionCmd := &cobra.Command{
