@@ -876,12 +876,12 @@ func LoadCAFromFiles(certPath, keyPath string) (*CertificateAuthority, error) {
 		return nil, fmt.Errorf("failed to parse private key: %w", err)
 	}
 
-	// Verify the private key is supported (RSA or ECDSA)
+	// Verify the private key is supported (RSA, ECDSA, or Ed25519)
 	switch privateKey.(type) {
-	case *rsa.PrivateKey, *ecdsa.PrivateKey:
+	case *rsa.PrivateKey, *ecdsa.PrivateKey, ed25519.PrivateKey:
 		// Supported key types
 	default:
-		return nil, fmt.Errorf("unsupported private key type")
+		return nil, fmt.Errorf("unsupported private key type: %T", privateKey)
 	}
 
 	// Try to load full chain

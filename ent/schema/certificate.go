@@ -17,6 +17,7 @@ type Certificate struct {
 func (Certificate) Fields() []ent.Field {
 	return []ent.Field{
 		field.String("common_name"),
+		// Serial number is not unique globally (different CAs can have same serial 1)
 		field.String("serial_number"),
 		field.Enum("type").Values("root_ca", "intermediate_ca", "server", "client"),
 		field.Enum("status").Values("valid", "revoked", "expired").Default("valid"),
