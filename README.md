@@ -11,11 +11,13 @@ A powerful, user-friendly CLI tool for creating and managing mTLS (mutual TLS) c
 - ✍️ **Sign CSRs** - Sign Certificate Signing Requests from external sources
 - 🚫 **Revoke Certificates** - Revoke certificates and generate CRLs
 - 🔍 **Inspect & Verify** - Inspect certificate details and verify chains
-- 🔑 **Multiple Key Types** - Support for RSA (2048/4096) and ECDSA (P-256/P-384/P-521)
+- 🌳 **Visualize Hierarchy** - View certificate chain hierarchy and status tree
+- 🔑 **Multiple Key Types** - Support for RSA (2048/4096), ECDSA (P-256/P-384/P-521), and Ed25519
 - 🎨 **Interactive CLI** - User-friendly prompts with sensible defaults
-- 📊 **Certificate Registry** - Track all your certificates in one place
-- 🎯 **Flexible Subject Configuration** - Customize all certificate fields
-- 🌐 **SAN Support** - Add DNS names and IP addresses to certificates
+- 📊 **Certificate Registry** - Track all your certificates in one place with SQLite backend
+- 🎯 **Flexible Subject Configuration** - Customize all certificate fields (Simplified DN support)
+- 🌐 **SAN Support** - Add DNS names and IP addresses to both server and client certificates
+- 📦 **Full Chain Support** - Automatically generates full chain certificates by default
 
 ## Installation
 
@@ -59,11 +61,14 @@ cd examples
 You'll be prompted for:
 - CA Type (Root CA or Intermediate CA)
 - Common Name (e.g., "My Company Root CA")
-- Organization
-- Country Code
+- Organization (Optional)
+- Country Code (Optional)
 - Validity Period (years)
-- Key Type (RSA 2048/4096, ECDSA P-256/P-384/P-521)
+- Key Type (RSA 2048/4096, ECDSA P-256/P-384/P-521, Ed25519)
 - Output directory
+
+> **Note**: Organization and Country are optional. If omitted, the DN will only contain the Common Name.
+> **Note**: The generated `ca-cert.pem` will contain the full chain if it's an intermediate CA. A separate `ca-cert-leaf.pem` is also created.
 
 ### 2. Create an Intermediate CA (Interactive Mode)
 
@@ -84,9 +89,11 @@ You'll be prompted for:
 - Common Name (e.g., "api.example.com")
 - DNS names (comma-separated)
 - IP addresses (comma-separated)
-- Organization
+- Organization (Optional)
 - Validity Period
 - Key Type
+
+> **Note**: The generated `server-cert.pem` contains the full certificate chain. The leaf certificate is available as `server-cert-leaf.pem`.
 
 ### 4. Create a Client Certificate (Interactive Mode)
 
@@ -97,7 +104,34 @@ You'll be prompted for:
 You'll be prompted for:
 - Select existing CA
 - Common Name (e.g., "client-1")
-- Organization
+- DNS names (comma-separated, optional)
+- IP addresses (comma-separated, optional)
+- Organization (Optional)
+- Validity Period
+- Key Type
+
+> **Note**: The generated `client-cert.pem` contains the full certificate chain. The leaf certificate is available as `client-cert-leaf.pem`.
+
+### 5. View Certificate Tree
+
+Visualize your certificate hierarchy and status:
+
+```bash
+./mtls tree
+```
+
+This will display a tree view of all your certificates, showing their validity status, expiration dates, and relationships.
+
+```text
+Certificate Registry Tree
+=========================
+Legend: ✓ Valid  ! Expired  ✗ Revoked
+
+├── ✓ My Root CA (root_ca) [Expires: 2035-12-22 (3650 days left)]
+│   ├── ✓ Intermediate CA (intermediate_ca) [Expires: 2030-12-22 (1825 days left)]
+│   │   ├── ✓ api.server.com (server) [Expires: 2026-12-22 (365 days left)]
+│   │   └── ! expired-client (client) [Expired: 2024-01-01 (-356 days left)]
+```
 - Validity Period
 - Key Type
 
