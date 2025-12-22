@@ -33,6 +33,27 @@ go build
 go install
 ```
 
+## Taskfile Usage
+
+This project uses [Taskfile](https://taskfile.dev/) for managing build and test operations.
+
+```bash
+# Build the web application
+task build:web
+
+# Build the Go application
+task build:app
+
+# Build both web and Go applications
+task build
+
+# Run tests
+task test
+
+# Install the tool globally (builds web app first)
+task install
+```
+
 ## Examples
 
 See the [examples](./examples) directory for practical implementations in multiple languages:
