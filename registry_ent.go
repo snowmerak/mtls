@@ -194,3 +194,32 @@ func RevokeCertificateInDB(ctx context.Context, serialNumber string) error {
 
 	return err
 }
+
+// ListCertificates returns certificates by type
+func ListCertificates(ctx context.Context, certType string) ([]*ent.Certificate, error) {
+	if dbClient == nil {
+		return nil, fmt.Errorf("database client not initialized")
+	}
+
+	var t certificate.Type
+	switch certType {
+	case "root-ca":
+		t = certificate.TypeRootCa
+	case "intermediate-ca":
+		t = certificate.TypeIntermediateCa
+	case "server":
+		t = certificate.TypeServer
+	case "client":
+		t = certificate.TypeClient
+	default:
+		return nil, fmt.Errorf("unknown certificate type: %s", certType)
+	}
+
+	return dbClient.Certificate.Query().
+		Where(
+			certificate.TypeEQ(t),
+			certificate.StatusEQ(certificate.StatusValid),
+		).
+		Order(ent.Desc(certificate.FieldCreatedAt)).
+		All(ctx)
+}
