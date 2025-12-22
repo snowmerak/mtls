@@ -98,6 +98,8 @@ export function CAList() {
                     <SelectItem value="rsa4096">RSA 4096</SelectItem>
                     <SelectItem value="ecp256">ECDSA P-256</SelectItem>
                     <SelectItem value="ecp384">ECDSA P-384</SelectItem>
+                    <SelectItem value="ecp521">ECDSA P-521</SelectItem>
+                    <SelectItem value="ed25519">Ed25519</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -153,6 +155,7 @@ export function CAList() {
                 <tr>
                   <th className="p-4 font-medium">Common Name</th>
                   <th className="p-4 font-medium">Type</th>
+                  <th className="p-4 font-medium">Key Type</th>
                   <th className="p-4 font-medium">Serial Number</th>
                   <th className="p-4 font-medium">Expires</th>
                 </tr>
@@ -162,6 +165,7 @@ export function CAList() {
                   <tr key={ca.id} className="border-t">
                     <td className="p-4">{ca.common_name}</td>
                     <td className="p-4">{ca.type}</td>
+                    <td className="p-4">{ca.key_type}</td>
                     <td className="p-4 font-mono text-xs">{ca.serial_number}</td>
                     <td className="p-4">{new Date(ca.expires_at).toLocaleDateString()}</td>
                   </tr>

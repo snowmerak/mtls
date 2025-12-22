@@ -135,6 +135,9 @@ export function ClientCertList() {
                     <SelectItem value="rsa2048">RSA 2048</SelectItem>
                     <SelectItem value="rsa4096">RSA 4096</SelectItem>
                     <SelectItem value="ecp256">ECDSA P-256</SelectItem>
+                    <SelectItem value="ecp384">ECDSA P-384</SelectItem>
+                    <SelectItem value="ecp521">ECDSA P-521</SelectItem>
+                    <SelectItem value="ed25519">Ed25519</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -155,6 +158,7 @@ export function ClientCertList() {
                 <tr>
                   <th className="p-4 font-medium">Common Name</th>
                   <th className="p-4 font-medium">Issuer</th>
+                  <th className="p-4 font-medium">Key Type</th>
                   <th className="p-4 font-medium">Serial Number</th>
                   <th className="p-4 font-medium">Expires</th>
                 </tr>
@@ -164,6 +168,7 @@ export function ClientCertList() {
                   <tr key={cert.id} className="border-t">
                     <td className="p-4">{cert.common_name}</td>
                     <td className="p-4">{cert.edges?.issuer?.common_name || "-"}</td>
+                    <td className="p-4">{cert.key_type}</td>
                     <td className="p-4 font-mono text-xs">{cert.serial_number}</td>
                     <td className="p-4">{new Date(cert.expires_at).toLocaleDateString()}</td>
                   </tr>
