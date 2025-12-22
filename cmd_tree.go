@@ -72,7 +72,8 @@ func printCertTree(cert *ent.Certificate, prefix string, isLast bool) {
 	statusColor.Printf("%s %s", statusIcon, cert.CommonName)
 	fmt.Printf(" (%s)", cert.Type)
 
-	daysLeft := int(time.Until(cert.ExpiresAt).Hours() / 24)
+	// Calculate days left using Unix timestamps to avoid time.Duration overflow (approx 290 years limit)
+	daysLeft := int((cert.ExpiresAt.Unix() - time.Now().Unix()) / 86400)
 	expireMsg := fmt.Sprintf("%s (%d days left)", cert.ExpiresAt.Format("2006-01-02"), daysLeft)
 
 	if daysLeft < 30 && daysLeft > 0 {
