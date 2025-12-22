@@ -11,6 +11,8 @@ import (
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/briandowns/spinner"
+	"github.com/snowmerak/mtls/ent"
+	"github.com/snowmerak/mtls/ent/certificate"
 	"github.com/spf13/cobra"
 )
 
@@ -166,17 +168,6 @@ func createServerCertCmd() *cobra.Command {
 				warnColor.Printf("⚠ Could not save to database: %v\n", err)
 			}
 
-			// Update registry
-			registry, err := LoadRegistry(defaultRegistryPath)
-			if err != nil {
-				warnColor.Printf("⚠ Could not load registry: %v\n", err)
-			} else {
-				registry.AddServer(metadata)
-				if err := SaveRegistry(registry, defaultRegistryPath); err != nil {
-					warnColor.Printf("⚠ Could not update registry: %v\n", err)
-				}
-			}
-
 			// Print success message
 			fmt.Println()
 			successColor.Println("✓ Server certificate created successfully!")
@@ -212,12 +203,20 @@ func listServerCertsCmd() *cobra.Command {
 		Use:   "list",
 		Short: "List all server certificates",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			registry, err := LoadRegistry(defaultRegistryPath)
+			certs, err := GetAllCertificates(context.Background())
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to query certificates: %w", err)
 			}
 
-			if len(registry.Servers) == 0 {
+			// Filter for server certificates
+			var serverCerts []*ent.Certificate
+			for _, c := range certs {
+				if c.Type == certificate.TypeServer {
+					serverCerts = append(serverCerts, c)
+				}
+			}
+
+			if len(serverCerts) == 0 {
 				infoColor.Println("No server certificates found. Create one with 'mtls cert create'")
 				return nil
 			}
@@ -226,7 +225,7 @@ func listServerCertsCmd() *cobra.Command {
 			successColor.Println("Server Certificates:")
 			fmt.Println()
 
-			for i, cert := range registry.Servers {
+			for i, cert := range serverCerts {
 				fmt.Printf("%d. %s\n", i+1, cert.CommonName)
 				infoColor.Printf("   Organization: %s\n", cert.Organization)
 				infoColor.Printf("   Key Type: %s\n", cert.KeyType)
@@ -321,12 +320,12 @@ func verifyCmd() *cobra.Command {
 
 func promptServerCertInfo(caPath, cn, org, dnsNames, ipAddresses *string, years *int, keyType, outputDir *string) error {
 	// Load registry to show available CAs
-	registry, err := LoadRegistry(defaultRegistryPath)
-	if err == nil && len(registry.CAs) > 0 {
-		caOptions := make([]string, len(registry.CAs))
+	cas, err := GetCAs(context.Background())
+	if err == nil && len(cas) > 0 {
+		caOptions := make([]string, len(cas))
 		caPaths := make(map[string]string)
 
-		for i, ca := range registry.CAs {
+		for i, ca := range cas {
 			label := fmt.Sprintf("%s (expires %s)", ca.CommonName, ca.ExpiresAt.Format("2006-01-02"))
 			caOptions[i] = label
 			caPaths[label] = filepath.Dir(ca.CertPath)

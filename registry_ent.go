@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"time"
 
 	entsql "entgo.io/ent/dialect/sql"
 	"github.com/snowmerak/mtls/ent"
@@ -123,4 +124,69 @@ func SaveCertificateToDB(ctx context.Context, meta CertMetadata) error {
 	}
 
 	return nil
+}
+
+// GetCAs returns all CA certificates (Root and Intermediate)
+func GetCAs(ctx context.Context) ([]*ent.Certificate, error) {
+	if dbClient == nil {
+		return nil, fmt.Errorf("database client not initialized")
+	}
+
+	return dbClient.Certificate.Query().
+		Where(
+			certificate.Or(
+				certificate.TypeEQ(certificate.TypeRootCa),
+				certificate.TypeEQ(certificate.TypeIntermediateCa),
+			),
+			certificate.StatusEQ(certificate.StatusValid),
+		).
+		Order(ent.Desc(certificate.FieldCreatedAt)).
+		All(ctx)
+}
+
+// GetCertificateByCN returns a certificate by Common Name
+func GetCertificateByCN(ctx context.Context, cn string) (*ent.Certificate, error) {
+	if dbClient == nil {
+		return nil, fmt.Errorf("database client not initialized")
+	}
+
+	return dbClient.Certificate.Query().
+		Where(certificate.CommonName(cn)).
+		Order(ent.Desc(certificate.FieldCreatedAt)).
+		First(ctx)
+}
+
+// GetAllCertificates returns all certificates
+func GetAllCertificates(ctx context.Context) ([]*ent.Certificate, error) {
+	if dbClient == nil {
+		return nil, fmt.Errorf("database client not initialized")
+	}
+	return dbClient.Certificate.Query().All(ctx)
+}
+
+// RevokeCertificateInDB marks a certificate as revoked in the database
+func RevokeCertificateInDB(ctx context.Context, serialNumber string) error {
+	if dbClient == nil {
+		return fmt.Errorf("database client not initialized")
+	}
+
+	// Find certificate
+	cert, err := dbClient.Certificate.Query().
+		Where(certificate.SerialNumber(serialNumber)).
+		Only(ctx)
+	if err != nil {
+		return fmt.Errorf("certificate not found: %w", err)
+	}
+
+	if cert.Status == certificate.StatusRevoked {
+		return fmt.Errorf("certificate is already revoked")
+	}
+
+	// Update status
+	_, err = cert.Update().
+		SetStatus(certificate.StatusRevoked).
+		SetRevokedAt(time.Now()).
+		Save(ctx)
+
+	return err
 }

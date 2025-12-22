@@ -11,6 +11,7 @@ import (
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/briandowns/spinner"
+	"github.com/snowmerak/mtls/ent/certificate"
 	"github.com/spf13/cobra"
 )
 
@@ -164,17 +165,6 @@ func createClientCertCmd() *cobra.Command {
 				warnColor.Printf("⚠ Could not save to database: %v\n", err)
 			}
 
-			// Update registry
-			registry, err := LoadRegistry(defaultRegistryPath)
-			if err != nil {
-				warnColor.Printf("⚠ Could not load registry: %v\n", err)
-			} else {
-				registry.AddClient(*metadata)
-				if err := SaveRegistry(registry, defaultRegistryPath); err != nil {
-					warnColor.Printf("⚠ Could not update registry: %v\n", err)
-				}
-			}
-
 			s.Stop()
 			successColor.Printf("✓ Client certificate saved to %s\n", outputDir)
 			return nil
@@ -198,12 +188,26 @@ func listClientCertsCmd() *cobra.Command {
 		Use:   "list-client",
 		Short: "List all client certificates",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			registry, err := LoadRegistry(defaultRegistryPath)
+			certs, err := GetAllCertificates(context.Background())
 			if err != nil {
 				return err
 			}
 
-			if len(registry.Clients) == 0 {
+			var clients []CertMetadata
+			for _, cert := range certs {
+				if cert.Type == certificate.TypeClient {
+					clients = append(clients, CertMetadata{
+						CommonName:   cert.CommonName,
+						Organization: cert.Organization,
+						KeyType:      cert.KeyType,
+						CreatedAt:    cert.CreatedAt,
+						ExpiresAt:    cert.ExpiresAt,
+						CertPath:     cert.CertPath,
+					})
+				}
+			}
+
+			if len(clients) == 0 {
 				infoColor.Println("No client certificates found. Create one with 'mtls cert create-client'")
 				return nil
 			}
@@ -212,7 +216,7 @@ func listClientCertsCmd() *cobra.Command {
 			successColor.Println("Client Certificates:")
 			fmt.Println()
 
-			for i, cert := range registry.Clients {
+			for i, cert := range clients {
 				fmt.Printf("%d. %s\n", i+1, cert.CommonName)
 				infoColor.Printf("   Organization: %s\n", cert.Organization)
 				infoColor.Printf("   Key Type: %s\n", cert.KeyType)
@@ -229,12 +233,12 @@ func listClientCertsCmd() *cobra.Command {
 
 func promptClientCertInfo(caPath, cn, org, dnsNames, ipAddresses *string, years *int, keyType, outputDir *string) error {
 	// Load registry to show available CAs
-	registry, err := LoadRegistry(defaultRegistryPath)
-	if err == nil && len(registry.CAs) > 0 {
-		caOptions := make([]string, len(registry.CAs))
+	cas, err := GetCAs(context.Background())
+	if err == nil && len(cas) > 0 {
+		caOptions := make([]string, len(cas))
 		caPaths := make(map[string]string)
 
-		for i, ca := range registry.CAs {
+		for i, ca := range cas {
 			label := fmt.Sprintf("%s (expires %s)", ca.CommonName, ca.ExpiresAt.Format("2006-01-02"))
 			caOptions[i] = label
 			caPaths[label] = filepath.Dir(ca.CertPath)

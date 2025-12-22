@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"crypto/x509/pkix"
+	"encoding/json"
 	"fmt"
 	"math/big"
 	"os"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/AlecAivazis/survey/v2"
 	"github.com/briandowns/spinner"
+	"github.com/snowmerak/mtls/ent/certificate"
 	"github.com/spf13/cobra"
 )
 
@@ -66,26 +68,18 @@ func createCACmd() *cobra.Command {
 
 			if caType == "intermediate" {
 				// Load parent CA
-				registry, err := LoadRegistry(defaultRegistryPath)
+				parentCert, err := GetCertificateByCN(context.Background(), parentCA)
 				if err != nil {
 					s.Stop()
-					return fmt.Errorf("failed to load registry: %w", err)
+					return fmt.Errorf("failed to load parent CA from DB: %w", err)
 				}
-
-				var parentMeta *CertMetadata
-				for _, c := range registry.CAs {
-					if c.CommonName == parentCA {
-						parentMeta = &c
-						break
-					}
-				}
-				if parentMeta == nil {
+				if parentCert == nil {
 					s.Stop()
 					return fmt.Errorf("parent CA '%s' not found", parentCA)
 				}
-				parentCertPath = parentMeta.CertPath
+				parentCertPath = parentCert.CertPath
 
-				parent, err := LoadCAFromFiles(parentMeta.CertPath, parentMeta.KeyPath)
+				parent, err := LoadCAFromFiles(parentCert.CertPath, parentCert.KeyPath)
 				if err != nil {
 					s.Stop()
 					return fmt.Errorf("failed to load parent CA: %w", err)
@@ -162,17 +156,6 @@ func createCACmd() *cobra.Command {
 				warnColor.Printf("⚠ Could not save to database: %v\n", err)
 			}
 
-			// Update registry
-			registry, err := LoadRegistry(defaultRegistryPath)
-			if err != nil {
-				warnColor.Printf("⚠ Could not load registry: %v\n", err)
-			} else {
-				registry.AddCA(metadata)
-				if err := SaveRegistry(registry, defaultRegistryPath); err != nil {
-					warnColor.Printf("⚠ Could not update registry: %v\n", err)
-				}
-			}
-
 			// Print success message
 			fmt.Println()
 			successColor.Printf("✓ %s created successfully!\n", caType)
@@ -207,12 +190,12 @@ func listCACmd() *cobra.Command {
 		Use:   "list",
 		Short: "List all Root CAs",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			registry, err := LoadRegistry(defaultRegistryPath)
+			cas, err := GetCAs(context.Background())
 			if err != nil {
-				return err
+				return fmt.Errorf("failed to query CAs: %w", err)
 			}
 
-			if len(registry.CAs) == 0 {
+			if len(cas) == 0 {
 				infoColor.Println("No Root CAs found. Create one with 'mtls ca create'")
 				return nil
 			}
@@ -221,11 +204,12 @@ func listCACmd() *cobra.Command {
 			successColor.Println("Root Certificate Authorities:")
 			fmt.Println()
 
-			for i, ca := range registry.CAs {
+			for i, ca := range cas {
 				fmt.Printf("%d. %s\n", i+1, ca.CommonName)
 				infoColor.Printf("   Type: %s\n", ca.Type)
-				if ca.Issuer != "" {
-					infoColor.Printf("   Issuer: %s\n", ca.Issuer)
+				if ca.QueryIssuer().ExistX(context.Background()) {
+					issuer, _ := ca.QueryIssuer().First(context.Background())
+					infoColor.Printf("   Issuer: %s\n", issuer.CommonName)
 				}
 				infoColor.Printf("   Organization: %s\n", ca.Organization)
 				infoColor.Printf("   Key Type: %s\n", ca.KeyType)
@@ -248,56 +232,45 @@ func revokeCmd() *cobra.Command {
 		Use:   "revoke",
 		Short: "Revoke a certificate",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			registry, err := LoadRegistry(defaultRegistryPath)
+			ctx := context.Background()
+
+			// Find certificate in DB
+			cert, err := dbClient.Certificate.Query().
+				Where(certificate.SerialNumber(serialNumber)).
+				Only(ctx)
 			if err != nil {
-				return err
+				return fmt.Errorf("certificate with serial number %s not found: %w", serialNumber, err)
 			}
 
-			// Find certificate by serial number
-			var targetCert *CertMetadata
-			found := false
-
-			// Check servers
-			for i, cert := range registry.Servers {
-				if cert.SerialNumber == serialNumber {
-					targetCert = &registry.Servers[i]
-					found = true
-					break
-				}
-			}
-
-			// Check CAs if not found
-			if !found {
-				for i, cert := range registry.CAs {
-					if cert.SerialNumber == serialNumber {
-						targetCert = &registry.CAs[i]
-						found = true
-						break
-					}
-				}
-			}
-
-			if !found {
-				return fmt.Errorf("certificate with serial number %s not found", serialNumber)
-			}
-
-			if targetCert.Revoked {
+			if cert.Status == certificate.StatusRevoked {
 				return fmt.Errorf("certificate is already revoked")
 			}
 
 			// Mark as revoked
-			targetCert.Revoked = true
-			targetCert.RevokedAt = time.Now()
-
-			// Save registry
-			if err := SaveRegistry(registry, defaultRegistryPath); err != nil {
-				return fmt.Errorf("failed to update registry: %w", err)
+			revokedAt := time.Now()
+			_, err = cert.Update().
+				SetStatus(certificate.StatusRevoked).
+				SetRevokedAt(revokedAt).
+				Save(ctx)
+			if err != nil {
+				return fmt.Errorf("failed to revoke certificate: %w", err)
 			}
 
-			// Update metadata file
-			metaPath := filepath.Join(filepath.Dir(targetCert.CertPath), ".metadata.json")
-			if err := SaveMetadata(targetCert, metaPath); err != nil {
-				warnColor.Printf("⚠ Could not update metadata file: %v\n", err)
+			// Try to update metadata file if it exists
+			metaPath := filepath.Join(filepath.Dir(cert.CertPath), ".metadata.json")
+			if _, err := os.Stat(metaPath); err == nil {
+				// Read file
+				data, err := os.ReadFile(metaPath)
+				if err == nil {
+					var meta CertMetadata
+					if err := json.Unmarshal(data, &meta); err == nil {
+						meta.Revoked = true
+						meta.RevokedAt = revokedAt
+						if err := SaveMetadata(&meta, metaPath); err != nil {
+							warnColor.Printf("⚠ Could not update metadata file: %v\n", err)
+						}
+					}
+				}
 			}
 
 			successColor.Printf("✓ Certificate %s revoked\n", serialNumber)
@@ -321,56 +294,44 @@ func genCRLCmd() *cobra.Command {
 		Use:   "crl",
 		Short: "Generate Certificate Revocation List (CRL)",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			registry, err := LoadRegistry(defaultRegistryPath)
-			if err != nil {
-				return err
-			}
+			ctx := context.Background()
 
 			// Find CA
-			var caMeta *CertMetadata
-			for _, ca := range registry.CAs {
-				if ca.CommonName == caName {
-					caMeta = &ca
-					break
-				}
-			}
-			if caMeta == nil {
-				return fmt.Errorf("CA '%s' not found", caName)
+			caCert, err := dbClient.Certificate.Query().
+				Where(certificate.CommonName(caName)).
+				Only(ctx)
+			if err != nil {
+				return fmt.Errorf("CA '%s' not found: %w", caName, err)
 			}
 
 			// Load CA
-			ca, err := LoadCAFromFiles(caMeta.CertPath, caMeta.KeyPath)
+			ca, err := LoadCAFromFiles(caCert.CertPath, caCert.KeyPath)
 			if err != nil {
 				return fmt.Errorf("failed to load CA: %w", err)
 			}
 
-			// Collect revoked certificates
-			var revokedCerts []pkix.RevokedCertificate
-			// Check servers
-			for _, cert := range registry.Servers {
-				if cert.Revoked && cert.CAPath == filepath.Dir(caMeta.CertPath) {
-					serial, ok := new(big.Int).SetString(cert.SerialNumber, 10)
-					if !ok {
-						continue
-					}
-					revokedCerts = append(revokedCerts, pkix.RevokedCertificate{
-						SerialNumber:   serial,
-						RevocationTime: cert.RevokedAt,
-					})
-				}
+			// Collect revoked certificates issued by this CA
+			revokedCertsDB, err := caCert.QueryIssuer().
+				Where(certificate.StatusEQ(certificate.StatusRevoked)).
+				All(ctx)
+			if err != nil {
+				return fmt.Errorf("failed to query revoked certificates: %w", err)
 			}
-			// Check clients
-			for _, cert := range registry.Clients {
-				if cert.Revoked && cert.CAPath == filepath.Dir(caMeta.CertPath) {
-					serial, ok := new(big.Int).SetString(cert.SerialNumber, 10)
-					if !ok {
-						continue
-					}
-					revokedCerts = append(revokedCerts, pkix.RevokedCertificate{
-						SerialNumber:   serial,
-						RevocationTime: cert.RevokedAt,
-					})
+
+			var revokedCerts []pkix.RevokedCertificate
+			for _, cert := range revokedCertsDB {
+				serial, ok := new(big.Int).SetString(cert.SerialNumber, 10)
+				if !ok {
+					continue
 				}
+				revokedAt := time.Time{}
+				if cert.RevokedAt != nil {
+					revokedAt = *cert.RevokedAt
+				}
+				revokedCerts = append(revokedCerts, pkix.RevokedCertificate{
+					SerialNumber:   serial,
+					RevocationTime: revokedAt,
+				})
 			}
 
 			// Generate CRL
@@ -381,7 +342,7 @@ func genCRLCmd() *cobra.Command {
 
 			// Save CRL
 			if output == "" {
-				output = filepath.Join(filepath.Dir(caMeta.CertPath), "crl.pem")
+				output = filepath.Join(filepath.Dir(caCert.CertPath), "crl.pem")
 			}
 
 			if err := os.WriteFile(output, crlBytes, 0644); err != nil {
@@ -492,16 +453,16 @@ func promptCAInfo(caType, parentCA, cn, org, country *string, years *int, keyTyp
 
 	// 2. If Intermediate, ask for Parent CA
 	if *caType == "intermediate" {
-		registry, err := LoadRegistry(defaultRegistryPath)
+		cas, err := GetCAs(context.Background())
 		if err != nil {
-			return fmt.Errorf("failed to load registry: %w", err)
+			return fmt.Errorf("failed to load CAs from DB: %w", err)
 		}
-		if len(registry.CAs) == 0 {
+		if len(cas) == 0 {
 			return fmt.Errorf("no CAs found in registry. Please create a Root CA first")
 		}
 
 		var caOptions []string
-		for _, ca := range registry.CAs {
+		for _, ca := range cas {
 			caOptions = append(caOptions, ca.CommonName)
 		}
 
@@ -589,12 +550,12 @@ func promptCAInfo(caType, parentCA, cn, org, country *string, years *int, keyTyp
 
 func promptSignCSRInfo(caPath, csrPath *string, years *int, outputDir *string) error {
 	// Load registry to show available CAs
-	registry, err := LoadRegistry(defaultRegistryPath)
-	if err == nil && len(registry.CAs) > 0 {
-		caOptions := make([]string, len(registry.CAs))
+	cas, err := GetCAs(context.Background())
+	if err == nil && len(cas) > 0 {
+		caOptions := make([]string, len(cas))
 		caPaths := make(map[string]string)
 
-		for i, ca := range registry.CAs {
+		for i, ca := range cas {
 			label := fmt.Sprintf("%s (expires %s)", ca.CommonName, ca.ExpiresAt.Format("2006-01-02"))
 			caOptions[i] = label
 			caPaths[label] = filepath.Dir(ca.CertPath)
