@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 
 	entsql "entgo.io/ent/dialect/sql"
@@ -15,11 +16,14 @@ var dbClient *ent.Client
 
 // InitDB initializes the database connection and schema
 func InitDB(dbPath string) (*ent.Client, error) {
-	// Use modernc.org/sqlite driver
-	drv, err := entsql.Open("sqlite", dbPath+"?_pragma=foreign_keys(1)")
+	// Open database with modernc.org/sqlite driver (registered as "sqlite")
+	db, err := sql.Open("sqlite", dbPath+"?_pragma=foreign_keys(1)")
 	if err != nil {
 		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
+
+	// Create ent driver with "sqlite3" dialect
+	drv := entsql.OpenDB("sqlite3", db)
 
 	client := ent.NewClient(ent.Driver(drv))
 
