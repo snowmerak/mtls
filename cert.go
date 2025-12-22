@@ -615,18 +615,44 @@ func (ca *CertificateAuthority) SaveCAToFiles(certPath, keyPath string) error {
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	// Save certificate
+	// Save full chain to certPath
 	certOut, err := os.Create(certPath)
 	if err != nil {
 		return fmt.Errorf("failed to create cert file: %w", err)
 	}
 	defer certOut.Close()
 
-	if err := pem.Encode(certOut, &pem.Block{
+	// Use Chain if available, otherwise just Certificate
+	certsToWrite := ca.Chain
+	if len(certsToWrite) == 0 {
+		certsToWrite = []*x509.Certificate{ca.Certificate}
+	}
+
+	for _, cert := range certsToWrite {
+		if err := pem.Encode(certOut, &pem.Block{
+			Type:  "CERTIFICATE",
+			Bytes: cert.Raw,
+		}); err != nil {
+			return fmt.Errorf("failed to write certificate chain: %w", err)
+		}
+	}
+
+	// Save leaf certificate separately
+	ext := filepath.Ext(certPath)
+	base := certPath[:len(certPath)-len(ext)]
+	leafPath := base + "-leaf" + ext
+
+	leafOut, err := os.Create(leafPath)
+	if err != nil {
+		return fmt.Errorf("failed to create leaf cert file: %w", err)
+	}
+	defer leafOut.Close()
+
+	if err := pem.Encode(leafOut, &pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: ca.Certificate.Raw,
 	}); err != nil {
-		return fmt.Errorf("failed to write certificate: %w", err)
+		return fmt.Errorf("failed to write leaf certificate: %w", err)
 	}
 
 	// Save private key
@@ -653,25 +679,6 @@ func (ca *CertificateAuthority) SaveCAToFiles(certPath, keyPath string) error {
 		return fmt.Errorf("failed to set key file permissions: %w", err)
 	}
 
-	// Save full chain if available
-	if len(ca.Chain) > 0 {
-		chainPath := filepath.Join(filepath.Dir(certPath), "fullchain.pem")
-		chainOut, err := os.Create(chainPath)
-		if err != nil {
-			return fmt.Errorf("failed to create chain file: %w", err)
-		}
-		defer chainOut.Close()
-
-		for _, cert := range ca.Chain {
-			if err := pem.Encode(chainOut, &pem.Block{
-				Type:  "CERTIFICATE",
-				Bytes: cert.Raw,
-			}); err != nil {
-				return fmt.Errorf("failed to write chain certificate: %w", err)
-			}
-		}
-	}
-
 	return nil
 }
 
@@ -685,37 +692,44 @@ func (cc *ClientCertificate) SaveClientCertToFiles(certPath, keyPath string) err
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	// Save certificate
+	// Save full chain to certPath
 	certOut, err := os.Create(certPath)
 	if err != nil {
 		return fmt.Errorf("failed to create cert file: %w", err)
 	}
 	defer certOut.Close()
 
-	if err := pem.Encode(certOut, &pem.Block{
+	// Use Chain if available, otherwise just Certificate
+	certsToWrite := cc.Chain
+	if len(certsToWrite) == 0 {
+		certsToWrite = []*x509.Certificate{cc.Certificate}
+	}
+
+	for _, cert := range certsToWrite {
+		if err := pem.Encode(certOut, &pem.Block{
+			Type:  "CERTIFICATE",
+			Bytes: cert.Raw,
+		}); err != nil {
+			return fmt.Errorf("failed to write certificate chain: %w", err)
+		}
+	}
+
+	// Save leaf certificate separately
+	ext := filepath.Ext(certPath)
+	base := certPath[:len(certPath)-len(ext)]
+	leafPath := base + "-leaf" + ext
+
+	leafOut, err := os.Create(leafPath)
+	if err != nil {
+		return fmt.Errorf("failed to create leaf cert file: %w", err)
+	}
+	defer leafOut.Close()
+
+	if err := pem.Encode(leafOut, &pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: cc.Certificate.Raw,
 	}); err != nil {
-		return fmt.Errorf("failed to write certificate: %w", err)
-	}
-
-	// Save full chain if available
-	if len(cc.Chain) > 0 {
-		chainPath := filepath.Join(filepath.Dir(certPath), "fullchain.pem")
-		chainOut, err := os.Create(chainPath)
-		if err != nil {
-			return fmt.Errorf("failed to create chain file: %w", err)
-		}
-		defer chainOut.Close()
-
-		for _, cert := range cc.Chain {
-			if err := pem.Encode(chainOut, &pem.Block{
-				Type:  "CERTIFICATE",
-				Bytes: cert.Raw,
-			}); err != nil {
-				return fmt.Errorf("failed to write chain certificate: %w", err)
-			}
-		}
+		return fmt.Errorf("failed to write leaf certificate: %w", err)
 	}
 
 	// Save private key
@@ -755,37 +769,44 @@ func (sc *ServerCertificate) SaveServerCertToFiles(certPath, keyPath string) err
 		return fmt.Errorf("failed to create directory: %w", err)
 	}
 
-	// Save certificate
+	// Save full chain to certPath
 	certOut, err := os.Create(certPath)
 	if err != nil {
 		return fmt.Errorf("failed to create cert file: %w", err)
 	}
 	defer certOut.Close()
 
-	if err := pem.Encode(certOut, &pem.Block{
+	// Use Chain if available, otherwise just Certificate
+	certsToWrite := sc.Chain
+	if len(certsToWrite) == 0 {
+		certsToWrite = []*x509.Certificate{sc.Certificate}
+	}
+
+	for _, cert := range certsToWrite {
+		if err := pem.Encode(certOut, &pem.Block{
+			Type:  "CERTIFICATE",
+			Bytes: cert.Raw,
+		}); err != nil {
+			return fmt.Errorf("failed to write certificate chain: %w", err)
+		}
+	}
+
+	// Save leaf certificate separately
+	ext := filepath.Ext(certPath)
+	base := certPath[:len(certPath)-len(ext)]
+	leafPath := base + "-leaf" + ext
+
+	leafOut, err := os.Create(leafPath)
+	if err != nil {
+		return fmt.Errorf("failed to create leaf cert file: %w", err)
+	}
+	defer leafOut.Close()
+
+	if err := pem.Encode(leafOut, &pem.Block{
 		Type:  "CERTIFICATE",
 		Bytes: sc.Certificate.Raw,
 	}); err != nil {
-		return fmt.Errorf("failed to write certificate: %w", err)
-	}
-
-	// Save full chain if available
-	if len(sc.Chain) > 0 {
-		chainPath := filepath.Join(filepath.Dir(certPath), "fullchain.pem")
-		chainOut, err := os.Create(chainPath)
-		if err != nil {
-			return fmt.Errorf("failed to create chain file: %w", err)
-		}
-		defer chainOut.Close()
-
-		for _, cert := range sc.Chain {
-			if err := pem.Encode(chainOut, &pem.Block{
-				Type:  "CERTIFICATE",
-				Bytes: cert.Raw,
-			}); err != nil {
-				return fmt.Errorf("failed to write chain certificate: %w", err)
-			}
-		}
+		return fmt.Errorf("failed to write leaf certificate: %w", err)
 	}
 
 	// Save private key
